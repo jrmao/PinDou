@@ -219,7 +219,7 @@
                 <canvas id="pixelCanvas"></canvas>
 
                 <!-- 图片上传区域（初始隐藏） -->
-                <div id="imageConvertPanel" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#16213e; padding:24px; border-radius:12px; z-index:100;">
+                <div id="imageConvertPanel" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#16213e; padding:24px; border-radius:12px; z-index:100; max-height:90vh; overflow-y:auto;">
                     <h3>图片转图案</h3>
                     <input type="file" id="imageInput" accept="image/png,image/jpeg" />
                     <div style="margin:16px 0;">
@@ -238,27 +238,10 @@
                     </div>
                     <div style="margin:16px 0; border-top:1px solid #0f3460; padding-top:16px;">
                         <label style="display:block; margin-bottom:8px;">算法参数：</label>
-                        <div style="margin:8px 0;">
-                            <label style="font-size:12px;">去噪强度：<span id="denoiseValue">3</span></label><br>
-                            <input type="range" id="denoiseLevel" min="0" max="10" value="3"
-                                style="width:200px;"
-                                oninput="document.getElementById('denoiseValue').textContent=this.value" />
-                            <span style="font-size:11px; color:#888;">(值越大越保守，保留更多细节)</span>
-                        </div>
-                        <div style="margin:8px 0;">
-                            <label style="font-size:12px;">背景敏感度：<span id="sensitivityValue">5</span></label><br>
-                            <input type="range" id="bgSensitivity" min="0" max="10" value="5"
-                                style="width:200px;"
-                                oninput="document.getElementById('sensitivityValue').textContent=this.value" />
-                            <span style="font-size:11px; color:#888;">(值越大背景判断越严格)</span>
-                        </div>
-                        <div style="margin:8px 0;">
-                            <label style="font-size:12px;">边缘锐度：<span id="edgeValue">5</span></label><br>
-                            <input type="range" id="edgeSharpness" min="0" max="10" value="5"
-                                style="width:200px;"
-                                oninput="document.getElementById('edgeValue').textContent=this.value" />
-                            <span style="font-size:11px; color:#888;">(值越大线条越锐利)</span>
-                        </div>
+                        <input type="hidden" id="denoiseLevel" value="3" />
+                        <input type="hidden" id="bgSensitivity" value="5" />
+                        <input type="hidden" id="edgeSharpness" value="5" />
+                        <div style="margin:8px 0; font-size:11px; color:#888;">参数已在下方滑块调节</div>
                     </div>
                     <div id="imagePreview" style="margin:16px 0; max-width:300px; max-height:300px;">
                         <img id="previewImg" style="max-width:100%; max-height:100%;" />
@@ -272,6 +255,30 @@
                     <h3>图案模板库</h3>
                     <div id="templateList" style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:16px 0; max-height:400px; overflow-y:auto;"></div>
                     <button id="btnCloseTemplates" style="padding:8px 24px; background:#444; color:white; border:none; border-radius:6px; cursor:pointer;">关闭</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 算法参数滑块 -->
+        <div id="algoParamsPanel" style="display:none; background:#1a1a2e; padding:12px 16px; border-top:1px solid #0f3460;">
+            <div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap;">
+                <div>
+                    <label style="font-size:12px; color:#eee;">去噪：<span id="denoiseValue">3</span></label><br>
+                    <input type="range" id="denoiseLevelMain" min="0" max="10" value="3"
+                        style="width:120px;"
+                        oninput="document.getElementById('denoiseValue').textContent=this.value; updateImagePreview();" />
+                </div>
+                <div>
+                    <label style="font-size:12px; color:#eee;">背景敏感度：<span id="sensitivityValue">5</span></label><br>
+                    <input type="range" id="bgSensitivityMain" min="0" max="10" value="5"
+                        style="width:120px;"
+                        oninput="document.getElementById('sensitivityValue').textContent=this.value; updateImagePreview();" />
+                </div>
+                <div>
+                    <label style="font-size:12px; color:#eee;">边缘锐度：<span id="edgeValue">5</span></label><br>
+                    <input type="range" id="edgeSharpnessMain" min="0" max="10" value="5"
+                        style="width:120px;"
+                        oninput="document.getElementById('edgeValue').textContent=this.value; updateImagePreview();" />
                 </div>
             </div>
         </div>
@@ -1220,10 +1227,13 @@ let uploadedImage = null;
 
 function showImageConvertPanel() {
     document.getElementById('imageConvertPanel').style.display = 'block';
+    document.getElementById('algoParamsPanel').style.display = 'block';
+    updateImagePreview();
 }
 
 function hideImageConvertPanel() {
     document.getElementById('imageConvertPanel').style.display = 'none';
+    document.getElementById('algoParamsPanel').style.display = 'none';
     uploadedImage = null;
     document.getElementById('imageInput').value = '';
     document.getElementById('previewImg').src = '';
@@ -1295,6 +1305,69 @@ function handleImageUpload(e) {
         img.src = event.target.result;
     };
     reader.readAsDataURL(file);
+}
+
+/**
+ * 实时预览更新 - 当有上传图片且滑块变化时调用
+ */
+function updateImagePreview() {
+    if (!uploadedImage) return;
+
+    const denoiseLevel = parseInt(document.getElementById('denoiseLevelMain')?.value || '3');
+    const bgSensitivity = parseInt(document.getElementById('bgSensitivityMain')?.value || '5');
+    const edgeSharpness = parseInt(document.getElementById('edgeSharpnessMain')?.value || '5');
+
+    const previewSize = 50;
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = previewSize;
+    tempCanvas.height = previewSize;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    tempCtx.drawImage(uploadedImage, 0, 0, previewSize, previewSize);
+    const imageData = tempCtx.getImageData(0, 0, previewSize, previewSize);
+
+    const previewGrid = [];
+    for (let y = 0; y < previewSize; y++) {
+        previewGrid[y] = [];
+        for (let x = 0; x < previewSize; x++) {
+            const idx = (y * previewSize + x) * 4;
+            const r = imageData.data[idx];
+            const g = imageData.data[idx + 1];
+            const b = imageData.data[idx + 2];
+            const a = imageData.data[idx + 3];
+
+            const isEmpty = isBackgroundColor(r, g, b, a, x, y, previewSize, previewSize, bgSensitivity, edgeSharpness);
+            previewGrid[y][x] = isEmpty ? '#FFFFFF' : findClosestColorLab(r, g, b);
+        }
+    }
+
+    if (previewSize <= 100) {
+        const originalGridData = state.gridData;
+        state.gridData = previewGrid;
+        enhanceColorBlocks(denoiseLevel, edgeSharpness);
+        previewGrid.length = 0;
+        for (let y = 0; y < previewSize; y++) {
+            previewGrid[y] = [...state.gridData[y]];
+        }
+        state.gridData = originalGridData;
+    }
+
+    const previewCanvas = document.createElement('canvas');
+    previewCanvas.width = previewSize;
+    previewCanvas.height = previewSize;
+    const previewCtx = previewCanvas.getContext('2d');
+
+    for (let y = 0; y < previewSize; y++) {
+        for (let x = 0; x < previewSize; x++) {
+            previewCtx.fillStyle = previewGrid[y][x];
+            previewCtx.fillRect(x, y, 1, 1);
+        }
+    }
+
+    const previewImg = document.getElementById('previewImg');
+    if (previewImg) {
+        previewImg.src = previewCanvas.toDataURL();
+    }
 }
 
 function convertImageToPattern() {
