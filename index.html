@@ -1,8 +1,9 @@
 <!--
 /**
  * PinDou - 拼豆图案设计工具
- * 版本：v1.1.3
+ * 版本：v1.1.4
  * 更新日志：
+ *   2026-05-02 v1.1.4 - 修复：按钮无法点击的问题；增强错误处理和边界检查
  *   2026-05-02 v1.1.3 - 新增：鼠标滚轮缩放功能；小尺寸色块融合算法；导出PNG质量优化（100×100达3MB）
  *   2026-05-02 v1.1.2 - 优化：导出PNG像素增大至30px/格；色号字体加黑加粗描边；每10格添加深色辅助线
  *   2026-05-02 v1.1.1 - 新增：清除画布和清除缓存功能
@@ -760,8 +761,11 @@ function initCanvas() {
     canvas.width = state.canvasWidth * PIXEL_SIZE;
     canvas.height = state.canvasHeight * PIXEL_SIZE;
 
-    // 初始化网格数据
-    initGridData();
+    // 如果 gridData 还没有初始化（首次加载时），则初始化
+    // 注意：loadFromStorage() 会设置 gridData，不要覆盖
+    if (!state.gridData) {
+        initGridData();
+    }
 
     // 渲染
     renderCanvas();
@@ -829,18 +833,27 @@ function handleCanvasMouseDown(e) {
         return;
     }
 
-    state.isDrawing = true;
-    const rect = canvas.getBoundingClientRect();
-    // getBoundingClientRect 已经考虑了 transform，直接计算相对于画布的位置
-    const x = Math.floor((e.clientX - rect.left) / (PIXEL_SIZE * state.zoom));
-    const y = Math.floor((e.clientY - rect.top) / (PIXEL_SIZE * state.zoom));
-    state.startX = x;
-    state.startY = y;
+    if (!canvas || !ctx) return;
 
-    if (state.currentTool === TOOLS.FILL) {
-        floodFill(x, y, state.currentColor);
-    } else {
-        setPixel(x, y, state.currentColor);
+    try {
+        state.isDrawing = true;
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        // getBoundingClientRect 已经考虑了 transform，直接计算相对于画布的位置
+        const x = Math.floor((e.clientX - rect.left) / (PIXEL_SIZE * state.zoom));
+        const y = Math.floor((e.clientY - rect.top) / (PIXEL_SIZE * state.zoom));
+        state.startX = x;
+        state.startY = y;
+
+        if (state.currentTool === TOOLS.FILL) {
+            floodFill(x, y, state.currentColor);
+        } else {
+            setPixel(x, y, state.currentColor);
+        }
+    } catch (err) {
+        console.warn('Canvas mouse down error:', err);
+        state.isDrawing = false;
     }
 }
 
@@ -853,16 +866,22 @@ function handleCanvasMouseMove(e) {
         return;
     }
 
-    if (!state.isDrawing) return;
+    if (!state.isDrawing || !canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / (PIXEL_SIZE * state.zoom));
-    const y = Math.floor((e.clientY - rect.top) / (PIXEL_SIZE * state.zoom));
+    try {
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
 
-    if (state.currentTool === TOOLS.PENCIL) {
-        setPixel(x, y, state.currentColor);
-    } else if (state.currentTool === TOOLS.ERASER) {
-        setPixel(x, y, null);
+        const x = Math.floor((e.clientX - rect.left) / (PIXEL_SIZE * state.zoom));
+        const y = Math.floor((e.clientY - rect.top) / (PIXEL_SIZE * state.zoom));
+
+        if (state.currentTool === TOOLS.PENCIL) {
+            setPixel(x, y, state.currentColor);
+        } else if (state.currentTool === TOOLS.ERASER) {
+            setPixel(x, y, null);
+        }
+    } catch (err) {
+        console.warn('Canvas mouse move error:', err);
     }
 }
 
@@ -872,11 +891,17 @@ function handleCanvasMouseUp(e) {
         return;
     }
     if (state.isDrawing && state.currentTool !== TOOLS.PENCIL && state.currentTool !== TOOLS.ERASER && state.currentTool !== TOOLS.FILL) {
-        // 矩形和直线工具
-        const rect = canvas.getBoundingClientRect();
-        const x = Math.floor((e.clientX - rect.left) / (PIXEL_SIZE * state.zoom));
-        const y = Math.floor((e.clientY - rect.top) / (PIXEL_SIZE * state.zoom));
-        drawShape(state.startX, state.startY, x, y, state.currentColor);
+        try {
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+
+            const x = Math.floor((e.clientX - rect.left) / (PIXEL_SIZE * state.zoom));
+            const y = Math.floor((e.clientY - rect.top) / (PIXEL_SIZE * state.zoom));
+            drawShape(state.startX, state.startY, x, y, state.currentColor);
+        } catch (err) {
+            console.warn('Canvas mouse up error:', err);
+        }
     }
     state.isDrawing = false;
     saveToHistory();
@@ -1427,7 +1452,6 @@ function enhanceColorBlocks() {
         }
     }
 }
-}
 
 // 检测是否为背景色（空白/透明/接近白色）
 function isBackgroundColor(r, g, b, a) {
@@ -1569,27 +1593,33 @@ function initEventListeners() {
     // 鼠标滚轮缩放
     document.getElementById('canvasContainer').addEventListener('wheel', (e) => {
         e.preventDefault();
-        const delta = e.deltaY > 0 ? -0.1 : 0.1;
-        const newZoom = Math.max(state.minZoom, Math.min(state.maxZoom, state.zoom + delta));
+        try {
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            const newZoom = Math.max(state.minZoom, Math.min(state.maxZoom, state.zoom + delta));
 
-        // 以鼠标位置为中心缩放
-        if (newZoom !== state.zoom) {
-            const rect = canvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
+            // 以鼠标位置为中心缩放
+            if (newZoom !== state.zoom && canvas) {
+                const rect = canvas.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {
+                    const mouseX = e.clientX - rect.left;
+                    const mouseY = e.clientY - rect.top;
 
-            // 计算缩放前后鼠标在画布上的位置
-            const oldScaledX = (mouseX - state.panX) / state.zoom;
-            const oldScaledY = (mouseY - state.panY) / state.zoom;
+                    // 计算缩放前后鼠标在画布上的位置
+                    const oldScaledX = (mouseX - state.panX) / state.zoom;
+                    const oldScaledY = (mouseY - state.panY) / state.zoom;
 
-            state.zoom = newZoom;
+                    state.zoom = newZoom;
 
-            // 调整平移使鼠标位置保持不变
-            state.panX = mouseX - oldScaledX * state.zoom;
-            state.panY = mouseY - oldScaledY * state.zoom;
+                    // 调整平移使鼠标位置保持不变
+                    state.panX = mouseX - oldScaledX * state.zoom;
+                    state.panY = mouseY - oldScaledY * state.zoom;
 
-            updateCanvasTransform();
-            updateStatusBar();
+                    updateCanvasTransform();
+                    updateStatusBar();
+                }
+            }
+        } catch (err) {
+            console.warn('Wheel zoom error:', err);
         }
     }, { passive: false });
 
