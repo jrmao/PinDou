@@ -1,8 +1,9 @@
 <!--
 /**
  * PinDou - 拼豆图案设计工具
- * 版本：v1.1.0
+ * 版本：v1.1.1
  * 更新日志：
+ *   2026-05-02 v1.1.1 - 新增：清除画布和清除缓存功能
  *   2026-05-02 v1.1.0 - 新增：图片尺寸支持自定义输入（长×宽）；空白/背景自动填充白色；优化颜色匹配算法（LAB色彩空间）
  *   2026-05-02 v1.0.9 - 新增：铅笔/橡皮擦工具切换；画布平移功能；导出PNG增加序号/色号标注
  *   2026-05-03 v1.0.8 - LocalStorage 自动保存与加载
@@ -197,6 +198,8 @@
                 <button id="btnEraser" class="tool-btn" title="橡皮擦（擦除颜色）">橡皮擦</button>
             </div>
             <div style="flex:1"></div>
+            <button id="btnClear" title="清除画布">清除</button>
+            <button id="btnClearCache" title="清除缓存数据">清除缓存</button>
             <button id="btnExport" title="导出PNG">导出PNG</button>
         </div>
 
@@ -1421,6 +1424,23 @@ function initEventListeners() {
 
     // 导出PNG
     document.getElementById('btnExport').addEventListener('click', exportAsPNG);
+
+    // 清除画布
+    document.getElementById('btnClear').addEventListener('click', () => {
+        if (confirm('确定要清除当前图案吗？')) {
+            initGridData();
+            renderCanvas();
+            saveToHistory();
+        }
+    });
+
+    // 清除缓存
+    document.getElementById('btnClearCache').addEventListener('click', () => {
+        if (confirm('确定要清除所有已保存的数据吗？此操作不可恢复。')) {
+            localStorage.removeItem(STORAGE_KEY);
+            alert('缓存已清除');
+        }
+    });
 
     // 键盘快捷键
     document.addEventListener('keydown', (e) => {
