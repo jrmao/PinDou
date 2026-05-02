@@ -234,19 +234,19 @@
                     <label style="font-size:12px; color:#eee;">去噪：<span id="denoiseValue">3</span></label><br>
                     <input type="range" id="denoiseLevelMain" min="0" max="10" value="3"
                         style="width:120px;"
-                        oninput="document.getElementById('denoiseValue').textContent=this.value; convertImageToPattern(false);" />
+                        oninput="document.getElementById('denoiseValue').textContent=this.value; reapplyFullConversionOnCanvas();" />
                 </div>
                 <div>
                     <label style="font-size:12px; color:#eee;">背景敏感度：<span id="sensitivityValue">5</span></label><br>
                     <input type="range" id="bgSensitivityMain" min="0" max="10" value="5"
                         style="width:120px;"
-                        oninput="document.getElementById('sensitivityValue').textContent=this.value; convertImageToPattern(false);" />
+                        oninput="document.getElementById('sensitivityValue').textContent=this.value; reapplyFullConversionOnCanvas();" />
                 </div>
                 <div>
                     <label style="font-size:12px; color:#eee;">边缘锐度：<span id="edgeValue">5</span></label><br>
                     <input type="range" id="edgeSharpnessMain" min="0" max="10" value="5"
                         style="width:120px;"
-                        oninput="document.getElementById('edgeValue').textContent=this.value; convertImageToPattern(false);" />
+                        oninput="document.getElementById('edgeValue').textContent=this.value; reapplyFullConversionOnCanvas();" />
             </div>
         </div>
 
@@ -1375,6 +1375,9 @@ function updateImagePreview() {
 function convertImageToPattern(closePanel = true) {
     if (!uploadedImage) return;
 
+    // 保存原始 gridData 副本，用于滑块重调
+    state._originalGridData = JSON.parse(JSON.stringify(state.gridData));
+
     let gridWidth, gridHeight;
 
     // 获取尺寸设置
@@ -1405,6 +1408,14 @@ function convertImageToPattern(closePanel = true) {
 
     // 获取像素数据
     const imageData = tempCtx.getImageData(0, 0, gridWidth, gridHeight);
+
+    // 保存原始像素数据，用于滑块实时预览
+    state._rawPixelData = {
+        data: new Uint8ClampedArray(imageData.data),
+        width: gridWidth,
+        height: gridHeight
+    };
+    console.log('[DEBUG] Saved _rawPixelData:', gridWidth, 'x', gridHeight);
 
     // 调整画布尺寸
     state.canvasWidth = gridWidth;
@@ -1444,6 +1455,106 @@ function convertImageToPattern(closePanel = true) {
     if (closePanel) {
         hideImageConvertPanel();
     }
+}
+
+/**
+ * 针对当前画布重新应用色块增强算法
+ * 用于滑块实时预览
+ */
+function reapplyEnhancementOnCanvas() {
+    const denoiseLevel = parseInt(document.getElementById('denoiseLevelMain')?.value || '3');
+    const edgeSharpness = parseInt(document.getElementById('edgeSharpnessMain')?.value || '5');
+
+    // 无原始数据时不做任何事
+    if (!state._originalGridData) return;
+
+    // 保护：限制 edgeSharpness 防止背景被侵蚀导致图案消失
+    const safeEdgeSharpness = Math.min(edgeSharpness, 6);
+
+    // 恢复原始数据后重新应用增强
+    state.gridData = JSON.parse(JSON.stringify(state._originalGridData));
+    enhanceColorBlocks(denoiseLevel, safeEdgeSharpness);
+    renderCanvas();
+}
+
+/**
+ * 针对当前画布重新应用完整转换算法
+ * 用于滑块实时预览（支持背景检测+颜色映射+色块增强）
+ */
+function reapplyFullConversionOnCanvas() {
+    const denoiseLevel = parseInt(document.getElementById('denoiseLevelMain')?.value || '3');
+    const bgSensitivity = parseInt(document.getElementById('bgSensitivityMain')?.value || '5');
+    const edgeSharpness = parseInt(document.getElementById('edgeSharpnessMain')?.value || '5');
+
+    // 无原图数据时 fallback 到色块增强
+    if (!state._rawPixelData) {
+        reapplyEnhancementOnCanvas();
+        return;
+    }
+
+    const { data, width, height } = state._rawPixelData;
+
+    // 保存转换前的图案，用于统计变化
+    const prevGridData = state.gridData.map(row => [...row]);
+    const prevDenoiseLevel = state._lastDenoiseLevel || 0;
+    const prevEdgeSharpness = state._lastEdgeSharpness || 0;
+
+    // 完整重新转换
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const idx = (y * width + x) * 4;
+            const r = data[idx];
+            const g = data[idx + 1];
+            const b = data[idx + 2];
+            const a = data[idx + 3];
+
+            // 检测是否为背景
+            const isEmpty = isBackgroundColor(r, g, b, a, x, y, width, height, bgSensitivity, edgeSharpness);
+
+            if (isEmpty) {
+                state.gridData[y][x] = '#FFFFFF';
+            } else {
+                state.gridData[y][x] = findClosestColorLab(r, g, b);
+            }
+        }
+    }
+
+    // 保护：限制 edgeSharpness 防止背景被侵蚀
+    const safeEdgeSharpness = Math.min(edgeSharpness, 6);
+
+    // 应用色块增强（仅小尺寸图像）
+    if (width <= 100 || height <= 100) {
+        enhanceColorBlocks(denoiseLevel, safeEdgeSharpness);
+    }
+
+    // 统计变化像素数量
+    let bgChanged = 0, denoiseChanged = 0, edgeChanged = 0;
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (prevGridData[y][x] !== state.gridData[y][x]) {
+                // 判断主要变化来源
+                if (bgSensitivity !== state._lastBgSensitivity) {
+                    bgChanged++;
+                } else if (denoiseLevel !== prevDenoiseLevel) {
+                    denoiseChanged++;
+                } else if (edgeSharpness !== prevEdgeSharpness) {
+                    edgeChanged++;
+                } else {
+                    bgChanged++; // 默认归类为背景相关变化
+                }
+            }
+        }
+    }
+
+    // 更新记录的上次参数
+    state._lastBgSensitivity = bgSensitivity;
+    state._lastDenoiseLevel = denoiseLevel;
+    state._lastEdgeSharpness = edgeSharpness;
+
+    // 显示变化统计
+    console.log(`[预览] 背景敏感度变化: ${bgSensitivity} | 去噪变化: ${denoiseLevel} | 边缘锐度变化: ${safeEdgeSharpness}`);
+
+    renderCanvas();
 }
 
 // 色块融合和边界增强算法（针对小尺寸图像）
