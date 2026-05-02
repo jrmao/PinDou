@@ -234,19 +234,19 @@
                     <label style="font-size:12px; color:#eee;">去噪：<span id="denoiseValue">3</span></label><br>
                     <input type="range" id="denoiseLevelMain" min="0" max="10" value="3"
                         style="width:120px;"
-                        oninput="document.getElementById('denoiseValue').textContent=this.value; updateImagePreview();" />
+                        oninput="document.getElementById('denoiseValue').textContent=this.value; convertImageToPattern(false);" />
                 </div>
                 <div>
                     <label style="font-size:12px; color:#eee;">背景敏感度：<span id="sensitivityValue">5</span></label><br>
                     <input type="range" id="bgSensitivityMain" min="0" max="10" value="5"
                         style="width:120px;"
-                        oninput="document.getElementById('sensitivityValue').textContent=this.value; updateImagePreview();" />
+                        oninput="document.getElementById('sensitivityValue').textContent=this.value; convertImageToPattern(false);" />
                 </div>
                 <div>
                     <label style="font-size:12px; color:#eee;">边缘锐度：<span id="edgeValue">5</span></label><br>
                     <input type="range" id="edgeSharpnessMain" min="0" max="10" value="5"
                         style="width:120px;"
-                        oninput="document.getElementById('edgeValue').textContent=this.value; updateImagePreview();" />
+                        oninput="document.getElementById('edgeValue').textContent=this.value; convertImageToPattern(false);" />
             </div>
         </div>
 
@@ -1372,7 +1372,7 @@ function updateImagePreview() {
     }
 }
 
-function convertImageToPattern() {
+function convertImageToPattern(closePanel = true) {
     if (!uploadedImage) return;
 
     let gridWidth, gridHeight;
@@ -1389,10 +1389,10 @@ function convertImageToPattern() {
         gridWidth = gridHeight = parseInt(sizeSelect);
     }
 
-    // 获取算法参数
-    const denoiseLevel = parseInt(document.getElementById('denoiseLevel')?.value || '3');
-    const bgSensitivity = parseInt(document.getElementById('bgSensitivity')?.value || '5');
-    const edgeSharpness = parseInt(document.getElementById('edgeSharpness')?.value || '5');
+    // 获取算法参数（从主界面滑块读取）
+    const denoiseLevel = parseInt(document.getElementById('denoiseLevelMain')?.value || '3');
+    const bgSensitivity = parseInt(document.getElementById('bgSensitivityMain')?.value || '5');
+    const edgeSharpness = parseInt(document.getElementById('edgeSharpnessMain')?.value || '5');
 
     // 创建临时 canvas 来采样图片
     const tempCanvas = document.createElement('canvas');
@@ -1441,7 +1441,9 @@ function convertImageToPattern() {
 
     renderCanvas();
     saveToHistory();
-    hideImageConvertPanel();
+    if (closePanel) {
+        hideImageConvertPanel();
+    }
 }
 
 // 色块融合和边界增强算法（针对小尺寸图像）
