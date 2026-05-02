@@ -1348,7 +1348,7 @@ function convertImageToPattern() {
             const a = imageData.data[idx + 3];
 
             // 检测是否为空白/透明/接近白色的背景
-            const isEmpty = isBackgroundColor(r, g, b, a, x, y, gridWidth, gridHeight, bgSensitivity);
+            const isEmpty = isBackgroundColor(r, g, b, a, x, y, gridWidth, gridHeight, bgSensitivity, edgeSharpness);
             if (isEmpty) {
                 // 背景用白色
                 state.gridData[y][x] = '#FFFFFF';
@@ -1488,9 +1488,10 @@ function enhanceColorBlocks(denoiseLevel = 3, edgeSharpness = 5) {
  * @param {number} width - 画布宽度
  * @param {number} height - 画布高度
  * @param {number} sensitivity - 背景敏感度 (0-10)
+ * @param {number} edgeSharpness - 边缘锐度 (0-10)
  * @returns {boolean}
  */
-function isBackgroundColor(r, g, b, a, x, y, width, height, sensitivity = 5) {
+function isBackgroundColor(r, g, b, a, x, y, width, height, sensitivity = 5, edgeSharpness = 5) {
     // 透明像素一定是背景
     if (a < 128) return true;
 
@@ -1504,8 +1505,9 @@ function isBackgroundColor(r, g, b, a, x, y, width, height, sensitivity = 5) {
 
     // 非常亮的单色区域
     if (brightness > brightnessThreshold && saturation < saturationThreshold) {
-        // 只有在边缘区域才判定为背景
-        if (isEdgeRegion(x, y, width, height, 3)) {
+        // 只有在边缘区域才判定为背景，使用 edgeSharpness 计算边距
+        const margin = Math.max(1, Math.floor(edgeSharpness * 0.4) + 1);
+        if (isEdgeRegion(x, y, width, height, margin)) {
             return true;
         }
     }
