@@ -1,8 +1,9 @@
 <!--
 /**
  * PinDou - 拼豆图案设计工具
- * 版本：v1.0.2-fix
+ * 版本：v1.0.3
  * 更新日志：
+ *   2026-05-03 v1.0.3 - 画布操作核心逻辑
  *   2026-05-03 v1.0.2-fix - 修复状态管理中的安全隐患
  *   2026-05-03 v1.0.2 - 状态管理和常量配置
  *   2026-05-03 v1.0.1 - HTML结构和基础样式
@@ -230,9 +231,241 @@ function redo() {
     }
 }
 
-// renderCanvas 占位符，后续 Task 4 实现
-function renderCanvas() {
-    // TODO: 实现画布渲染
+// ============================================
+// 画布操作
+// ============================================
+
+let canvas, ctx;
+const PIXEL_SIZE = 16;  // 每个像素在屏幕上的大小
+
+function initCanvas() {
+    canvas = document.getElementById('pixelCanvas');
+    ctx = canvas.getContext('2d');
+
+    // 设置 canvas 尺寸
+    canvas.width = state.canvasWidth * PIXEL_SIZE;
+    canvas.height = state.canvasHeight * PIXEL_SIZE;
+
+    // 初始化网格数据
+    initGridData();
+
+    // 渲染
+    renderCanvas();
+
+    // 保存初始历史
+    saveToHistory();
 }
+
+function renderCanvas() {
+    // 清空画布
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 绘制每个像素
+    for (let y = 0; y < state.canvasHeight; y++) {
+        for (let x = 0; x < state.canvasWidth; x++) {
+            const color = state.gridData[y][x];
+            if (color) {
+                ctx.fillStyle = color;
+                ctx.fillRect(
+                    x * PIXEL_SIZE,
+                    y * PIXEL_SIZE,
+                    PIXEL_SIZE,
+                    PIXEL_SIZE
+                );
+            }
+        }
+    }
+
+    // 绘制网格线
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= state.canvasWidth; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * PIXEL_SIZE, 0);
+        ctx.lineTo(x * PIXEL_SIZE, canvas.height);
+        ctx.stroke();
+    }
+    for (let y = 0; y <= state.canvasHeight; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * PIXEL_SIZE);
+        ctx.lineTo(canvas.width, y * PIXEL_SIZE);
+        ctx.stroke();
+    }
+
+    updateStatusBar();
+}
+
+// 事件处理
+function handleCanvasMouseDown(e) {
+    state.isDrawing = true;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left) / PIXEL_SIZE);
+    const y = Math.floor((e.clientY - rect.top) / PIXEL_SIZE);
+    state.startX = x;
+    state.startY = y;
+
+    if (state.currentTool === TOOLS.FILL) {
+        floodFill(x, y, state.currentColor);
+    } else {
+        setPixel(x, y, state.currentColor);
+    }
+}
+
+function handleCanvasMouseMove(e) {
+    if (!state.isDrawing) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left) / PIXEL_SIZE);
+    const y = Math.floor((e.clientY - rect.top) / PIXEL_SIZE);
+
+    if (state.currentTool === TOOLS.PENCIL) {
+        setPixel(x, y, state.currentColor);
+    } else if (state.currentTool === TOOLS.ERASER) {
+        setPixel(x, y, null);
+    }
+}
+
+function handleCanvasMouseUp(e) {
+    if (state.isDrawing && state.currentTool !== TOOLS.PENCIL && state.currentTool !== TOOLS.ERASER && state.currentTool !== TOOLS.FILL) {
+        // 矩形和直线工具
+        const rect = canvas.getBoundingClientRect();
+        const x = Math.floor((e.clientX - rect.left) / PIXEL_SIZE);
+        const y = Math.floor((e.clientY - rect.top) / PIXEL_SIZE);
+        drawShape(state.startX, state.startY, x, y, state.currentColor);
+    }
+    state.isDrawing = false;
+    saveToHistory();
+}
+
+function setPixel(x, y, color) {
+    if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
+        state.gridData[y][x] = color;
+        renderCanvas();
+    }
+}
+
+function floodFill(x, y, color) {
+    const targetColor = state.gridData[y][x];
+    if (targetColor === color) return;
+
+    const stack = [[x, y]];
+    const visited = new Set();
+
+    while (stack.length > 0) {
+        const [cx, cy] = stack.pop();
+        const key = `${cx},${cy}`;
+
+        if (visited.has(key)) continue;
+        if (cx < 0 || cx >= state.canvasWidth || cy < 0 || cy >= state.canvasHeight) continue;
+        if (state.gridData[cy][cx] !== targetColor) continue;
+
+        visited.add(key);
+        state.gridData[cy][cx] = color;
+
+        stack.push([cx + 1, cy]);
+        stack.push([cx - 1, cy]);
+        stack.push([cx, cy + 1]);
+        stack.push([cx, cy - 1]);
+    }
+
+    renderCanvas();
+}
+
+function drawShape(x1, y1, x2, y2, color) {
+    // 简化的矩形绘制
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    const minY = Math.min(y1, y2);
+    const maxY = Math.max(y1, y2);
+
+    for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+            if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
+                state.gridData[y][x] = color;
+            }
+        }
+    }
+
+    renderCanvas();
+}
+
+function updateStatusBar() {
+    document.getElementById('statusSize').textContent =
+        `画布: ${state.canvasWidth}×${state.canvasHeight}`;
+    document.getElementById('statusZoom').textContent =
+        `缩放: ${Math.round(state.zoom * 100)}%`;
+}
+
+// ============================================
+// 工具函数
+// ============================================
+
+function deepCopy(obj) {
+    return structuredClone(obj);
+}
+
+function initGridData() {
+    state.gridData = [];
+    for (let y = 0; y < state.canvasHeight; y++) {
+        const row = [];
+        for (let x = 0; x < state.canvasWidth; x++) {
+            row.push(null);
+        }
+        state.gridData.push(row);
+    }
+}
+
+function saveToHistory() {
+    // 移除当前位置之后的历史
+    state.history = state.history.slice(0, state.historyIndex + 1);
+    // 保存当前状态
+    state.history.push(deepCopy(state.gridData));
+    state.historyIndex++;
+    // 限制历史记录数量
+    if (state.history.length > 50) {
+        state.history.shift();
+        state.historyIndex--;
+    }
+}
+
+function undo() {
+    if (state.historyIndex > 0) {
+        state.historyIndex--;
+        state.gridData = deepCopy(state.history[state.historyIndex]);
+        renderCanvas();
+    }
+}
+
+function redo() {
+    if (state.historyIndex < state.history.length - 1) {
+        state.historyIndex++;
+        state.gridData = deepCopy(state.history[state.historyIndex]);
+        renderCanvas();
+    }
+}
+
+function initEventListeners() {
+    canvas.addEventListener('mousedown', handleCanvasMouseDown);
+    canvas.addEventListener('mousemove', handleCanvasMouseMove);
+    canvas.addEventListener('mouseup', handleCanvasMouseUp);
+    canvas.addEventListener('mouseleave', () => { state.isDrawing = false; });
+
+    // 键盘快捷键
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'z') {
+            e.preventDefault();
+            undo();
+        } else if (e.ctrlKey && e.key === 'y') {
+            e.preventDefault();
+            redo();
+        }
+    });
+}
+
+// 页面加载完成后初始化
+document.addEventListener('DOMContentLoaded', () => {
+    initCanvas();
+    initEventListeners();
+});
 </script>
 </html>
