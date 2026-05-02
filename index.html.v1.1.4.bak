@@ -1,0 +1,1779 @@
+<!--
+/**
+ * PinDou - 拼豆图案设计工具
+ * 版本：v1.1.4
+ * 更新日志：
+ *   2026-05-02 v1.1.4 - 修复：按钮无法点击的问题；增强错误处理和边界检查
+ *   2026-05-02 v1.1.3 - 新增：鼠标滚轮缩放功能；小尺寸色块融合算法；导出PNG质量优化（100×100达3MB）
+ *   2026-05-02 v1.1.2 - 优化：导出PNG像素增大至30px/格；色号字体加黑加粗描边；每10格添加深色辅助线
+ *   2026-05-02 v1.1.1 - 新增：清除画布和清除缓存功能
+ *   2026-05-02 v1.1.0 - 新增：图片尺寸支持自定义输入（长×宽）；空白/背景自动填充白色；优化颜色匹配算法（LAB色彩空间）
+ *   2026-05-02 v1.0.9 - 新增：铅笔/橡皮擦工具切换；画布平移功能；导出PNG增加序号/色号标注
+ *   2026-05-03 v1.0.8 - LocalStorage 自动保存与加载
+ *   2026-05-03 v1.0.7 - 导出PNG功能
+ *   2026-05-03 v1.0.6 - 模板库功能
+ *   2026-05-03 v1.0.5 - 图片转图案功能
+ *   2026-05-03 v1.0.4 - Mard 颜色盘
+ *   2026-05-03 v1.0.3 - 画布操作核心逻辑
+ *   2026-05-03 v1.0.2-fix - 修复状态管理中的安全隐患
+ *   2026-05-03 v1.0.2 - 状态管理和常量配置
+ *   2026-05-03 v1.0.1 - HTML结构和基础样式
+ *   2026-05-02 v1.0.0 - 初始版本，像素画编辑器/图片转图案/模板库
+ */
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PinDou - 拼豆图案设计工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        /* 顶部工具栏 */
+        .toolbar {
+            display: flex;
+            gap: 8px;
+            padding: 12px 16px;
+            background: #16213e;
+            border-bottom: 1px solid #0f3460;
+        }
+
+        .toolbar button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .toolbar button.active {
+            background: #e94560;
+            color: white;
+        }
+
+        /* 主内容区 */
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* 左侧颜色盘 */
+        .color-panel {
+            width: 220px;
+            background: #16213e;
+            border-right: 1px solid #0f3460;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        /* 画布区域 */
+        .canvas-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #0f0f23;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #pixelCanvas {
+            border: 2px solid #e94560;
+            cursor: crosshair;
+            image-rendering: pixelated;
+        }
+
+        /* 状态栏 */
+        .status-bar {
+            display: flex;
+            gap: 24px;
+            padding: 8px 16px;
+            background: #16213e;
+            border-top: 1px solid #0f3460;
+            font-size: 12px;
+            color: #888;
+        }
+
+        /* 颜色盘样式 */
+        .color-panel h3 {
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #e94560;
+        }
+
+        .color-series {
+            margin-bottom: 12px;
+        }
+
+        .color-series h4 {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 4px;
+        }
+
+        .color-btn {
+            width: 28px;
+            height: 28px;
+            border: 2px solid transparent;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        .color-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .color-btn.selected {
+            border: 2px solid white;
+        }
+
+        /* 工具按钮组 */
+        .tool-group {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .tool-btn {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+            background: #0f3460;
+            color: #eee;
+        }
+
+        .tool-btn:hover {
+            background: #1a4a80;
+        }
+
+        .tool-btn.active {
+            background: #e94560;
+            color: white;
+        }
+
+        .tool-btn.eraser-active {
+            background: #ff6b6b;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 顶部工具栏 -->
+        <div class="toolbar">
+            <button id="btnEditor" class="active" title="像素画编辑器">编辑器</button>
+            <button id="btnImageConvert" title="图片转图案">图片转图案</button>
+            <button id="btnTemplates" title="图案模板库">模板库</button>
+            <div class="tool-group" style="margin-left:16px; border-left:1px solid #0f3460; padding-left:16px;">
+                <button id="btnPencil" class="tool-btn active" title="铅笔工具">铅笔</button>
+                <button id="btnEraser" class="tool-btn" title="橡皮擦（擦除颜色）">橡皮擦</button>
+            </div>
+            <div style="flex:1"></div>
+            <button id="btnClear" title="清除画布">清除</button>
+            <button id="btnClearCache" title="清除缓存数据">清除缓存</button>
+            <button id="btnExport" title="导出PNG">导出PNG</button>
+        </div>
+
+        <!-- 主内容区 -->
+        <div class="main-content">
+            <!-- 左侧颜色盘 -->
+            <div class="color-panel" id="colorPanel">
+                <h3>颜色盘</h3>
+                <div id="colorList"></div>
+            </div>
+
+            <!-- 画布区域 -->
+            <div class="canvas-container" id="canvasContainer">
+                <canvas id="pixelCanvas"></canvas>
+
+                <!-- 图片上传区域（初始隐藏） -->
+                <div id="imageConvertPanel" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#16213e; padding:24px; border-radius:12px; z-index:100;">
+                    <h3>图片转图案</h3>
+                    <input type="file" id="imageInput" accept="image/png,image/jpeg" />
+                    <div style="margin:16px 0;">
+                        <label>网格尺寸: <select id="gridSizeSelect">
+                            <option value="8">8×8</option>
+                            <option value="16">16×16</option>
+                            <option value="29">29×29</option>
+                            <option value="50">50×50</option>
+                            <option value="100">100×100</option>
+                            <option value="custom">自定义</option>
+                        </select></label>
+                    </div>
+                    <div id="customSizePanel" style="margin:16px 0; display:none;">
+                        <label>宽度: <input type="number" id="customWidth" min="8" max="200" value="50" style="width:60px;" /> ×
+                        高度: <input type="number" id="customHeight" min="8" max="200" value="50" style="width:60px;" /></label>
+                    </div>
+                    <div id="imagePreview" style="margin:16px 0; max-width:300px; max-height:300px;">
+                        <img id="previewImg" style="max-width:100%; max-height:100%;" />
+                    </div>
+                    <button id="btnConvert" style="padding:8px 24px; background:#e94560; color:white; border:none; border-radius:6px; cursor:pointer;">转换</button>
+                    <button id="btnCancelConvert" style="padding:8px 24px; margin-left:8px; background:#444; color:white; border:none; border-radius:6px; cursor:pointer;">取消</button>
+                </div>
+
+                <!-- 模板库面板（初始隐藏） -->
+                <div id="templatePanel" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#16213e; padding:24px; border-radius:12px; z-index:100; max-width:500px;">
+                    <h3>图案模板库</h3>
+                    <div id="templateList" style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:16px 0; max-height:400px; overflow-y:auto;"></div>
+                    <button id="btnCloseTemplates" style="padding:8px 24px; background:#444; color:white; border:none; border-radius:6px; cursor:pointer;">关闭</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 状态栏 -->
+        <div class="status-bar">
+            <span id="statusSize">画布: 29×29</span>
+            <span id="statusZoom">缩放: 100%</span>
+        </div>
+    </div>
+</body>
+<script>
+'use strict';
+
+// ============================================
+// 常量配置
+// ============================================
+
+// ============================================
+// Mard 291 色颜色盘
+// 完整颜色数据参考 Mard 官方色卡
+// ============================================
+const MARD_COLORS = [
+    // A系列 - 黄橙色 (26 colors)
+    { num: 'A1', type: 'normal', color: '#faf5cd' },
+    { num: 'A2', type: 'normal', color: '#fcfea6' },
+    { num: 'A3', type: 'normal', color: '#fcf963' },
+    { num: 'A4', type: 'normal', color: '#f7ec5c' },
+    { num: 'A5', type: 'normal', color: '#f0d83a' },
+    { num: 'A6', type: 'normal', color: '#fdad51' },
+    { num: 'A7', type: 'normal', color: '#fa8c4f' },
+    { num: 'A8', type: 'normal', color: '#fbda4d' },
+    { num: 'A9', type: 'normal', color: '#f7c84b' },
+    { num: 'A10', type: 'normal', color: '#f5b84a' },
+    { num: 'A11', type: 'normal', color: '#f0a832' },
+    { num: 'A12', type: 'normal', color: '#e68a25' },
+    { num: 'A13', type: 'normal', color: '#d47319' },
+    { num: 'A14', type: 'normal', color: '#c95d12' },
+    { num: 'A15', type: 'normal', color: '#b84512' },
+    { num: 'A16', type: 'normal', color: '#9e330f' },
+    { num: 'A17', type: 'normal', color: '#f9e64f' },
+    { num: 'A18', type: 'normal', color: '#f5d61e' },
+    { num: 'A19', type: 'normal', color: '#e8c20d' },
+    { num: 'A20', type: 'normal', color: '#d4a512' },
+    { num: 'A21', type: 'normal', color: '#c4941c' },
+    { num: 'A22', type: 'normal', color: '#b07d1a' },
+    { num: 'A23', type: 'normal', color: '#9a6515' },
+    { num: 'A24', type: 'normal', color: '#8b5012' },
+    { num: 'A25', type: 'normal', color: '#7a3d0f' },
+    { num: 'A26', type: 'normal', color: '#5c2c0a' },
+
+    // B系列 - 绿色 (32 colors)
+    { num: 'B1', type: 'normal', color: '#64f343' },
+    { num: 'B2', type: 'normal', color: '#a1f586' },
+    { num: 'B3', type: 'normal', color: '#5fdf34' },
+    { num: 'B4', type: 'normal', color: '#39e158' },
+    { num: 'B5', type: 'normal', color: '#28c94b' },
+    { num: 'B6', type: 'normal', color: '#1eb342' },
+    { num: 'B7', type: 'normal', color: '#169c38' },
+    { num: 'B8', type: 'normal', color: '#0e852d' },
+    { num: 'B9', type: 'normal', color: '#0a6e24' },
+    { num: 'B10', type: 'normal', color: '#085a1d' },
+    { num: 'B11', type: 'normal', color: '#85e82f' },
+    { num: 'B12', type: 'normal', color: '#6dd91e' },
+    { num: 'B13', type: 'normal', color: '#52c415' },
+    { num: 'B14', type: 'normal', color: '#3db00c' },
+    { num: 'B15', type: 'normal', color: '#2e9d08' },
+    { num: 'B16', type: 'normal', color: '#238005' },
+    { num: 'B17', type: 'normal', color: '#1a6604' },
+    { num: 'B18', type: 'normal', color: '#125003' },
+    { num: 'B19', type: 'normal', color: '#0a3e02' },
+    { num: 'B20', type: 'normal', color: '#b8f07a' },
+    { num: 'B21', type: 'normal', color: '#9de05f' },
+    { num: 'B22', type: 'normal', color: '#7ecc44' },
+    { num: 'B23', type: 'normal', color: '#5fb82e' },
+    { num: 'B24', type: 'normal', color: '#4ca020' },
+    { num: 'B25', type: 'normal', color: '#3d8918' },
+    { num: 'B26', type: 'normal', color: '#2f6e10' },
+    { num: 'B27', type: 'normal', color: '#22550a' },
+    { num: 'B28', type: 'normal', color: '#164004' },
+    { num: 'B29', type: 'normal', color: '#0e2d03' },
+    { num: 'B30', type: 'normal', color: '#072002' },
+    { num: 'B31', type: 'normal', color: '#041501' },
+    { num: 'B32', type: 'normal', color: '#020d00' },
+
+    // C系列 - 蓝青色 (29 colors)
+    { num: 'C1', type: 'normal', color: '#abf0d6' },
+    { num: 'C2', type: 'normal', color: '#75edd9' },
+    { num: 'C3', type: 'normal', color: '#3de3d5' },
+    { num: 'C4', type: 'normal', color: '#1dd3c6' },
+    { num: 'C5', type: 'normal', color: '#1dbcb0' },
+    { num: 'C6', type: 'normal', color: '#18a49c' },
+    { num: 'C7', type: 'normal', color: '#148d85' },
+    { num: 'C8', type: 'normal', color: '#107770' },
+    { num: 'C9', type: 'normal', color: '#0c605a' },
+    { num: 'C10', type: 'normal', color: '#084a45' },
+    { num: 'C11', type: 'normal', color: '#053833' },
+    { num: 'C12', type: 'normal', color: '#032623' },
+    { num: 'C13', type: 'normal', color: '#c5f7f2' },
+    { num: 'C14', type: 'normal', color: '#9ceeE8' },
+    { num: 'C15', type: 'normal', color: '#6ae3d9' },
+    { num: 'C16', type: 'normal', color: '#3bd4c7' },
+    { num: 'C17', type: 'normal', color: '#22bfb0' },
+    { num: 'C18', type: 'normal', color: '#1aa596' },
+    { num: 'C19', type: 'normal', color: '#158a7d' },
+    { num: 'C20', type: 'normal', color: '#107064' },
+    { num: 'C21', type: 'normal', color: '#0b564d' },
+    { num: 'C22', type: 'normal', color: '#074039' },
+    { num: 'C23', type: 'normal', color: '#042c27' },
+    { num: 'C24', type: 'normal', color: '#c0e4f5' },
+    { num: 'C25', type: 'normal', color: '#8cd1ec' },
+    { num: 'C26', type: 'normal', color: '#5bbce0' },
+    { num: 'C27', type: 'normal', color: '#2fa7d2' },
+    { num: 'C28', type: 'normal', color: '#1e8fc4' },
+    { num: 'C29', type: 'normal', color: '#1879a6' },
+
+    // D系列 - 紫蓝色 (26 colors)
+    { num: 'D1', type: 'normal', color: '#a2c5f5' },
+    { num: 'D2', type: 'normal', color: '#679df2' },
+    { num: 'D3', type: 'normal', color: '#3979eb' },
+    { num: 'D4', type: 'normal', color: '#165cd1' },
+    { num: 'D5', type: 'normal', color: '#1045a8' },
+    { num: 'D6', type: 'normal', color: '#0c3585' },
+    { num: 'D7', type: 'normal', color: '#082663' },
+    { num: 'D8', type: 'normal', color: '#061943' },
+    { num: 'D9', type: 'normal', color: '#041226' },
+    { num: 'D10', type: 'normal', color: '#c8b8f8' },
+    { num: 'D11', type: 'normal', color: '#a891f0' },
+    { num: 'D12', type: 'normal', color: '#866ce6' },
+    { num: 'D13', type: 'normal', color: '#6448dc' },
+    { num: 'D14', type: 'normal', color: '#4c2fd0' },
+    { num: 'D15', type: 'normal', color: '#3d1fb5' },
+    { num: 'D16', type: 'normal', color: '#301498' },
+    { num: 'D17', type: 'normal', color: '#240c7a' },
+    { num: 'D18', type: 'normal', color: '#1a0759' },
+    { num: 'D19', type: 'normal', color: '#11043c' },
+    { num: 'D20', type: 'normal', color: '#d4c0f5' },
+    { num: 'D21', type: 'normal', color: '#b496ec' },
+    { num: 'D22', type: 'normal', color: '#946ce0' },
+    { num: 'D23', type: 'normal', color: '#7344d3' },
+    { num: 'D24', type: 'normal', color: '#5d28c2' },
+    { num: 'D25', type: 'normal', color: '#4a1da5' },
+    { num: 'D26', type: 'normal', color: '#381487' },
+
+    // E系列 - 粉红色 (24 colors)
+    { num: 'E1', type: 'normal', color: '#fad4e0' },
+    { num: 'E2', type: 'normal', color: '#f8b5d0' },
+    { num: 'E3', type: 'normal', color: '#f592b9' },
+    { num: 'E4', type: 'normal', color: '#ee699a' },
+    { num: 'E5', type: 'normal', color: '#e64683' },
+    { num: 'E6', type: 'normal', color: '#d62e6e' },
+    { num: 'E7', type: 'normal', color: '#c41d5c' },
+    { num: 'E8', type: 'normal', color: '#a8124c' },
+    { num: 'E9', type: 'normal', color: '#8c0a3e' },
+    { num: 'E10', type: 'normal', color: '#6f0530' },
+    { num: 'E11', type: 'normal', color: '#f5b8c4' },
+    { num: 'E12', type: 'normal', color: '#ed9aa9' },
+    { num: 'E13', type: 'normal', color: '#e27c8e' },
+    { num: 'E14', type: 'normal', color: '#d45e73' },
+    { num: 'E15', type: 'normal', color: '#c4465d' },
+    { num: 'E16', type: 'normal', color: '#ae324a' },
+    { num: 'E17', type: 'normal', color: '#96233a' },
+    { num: 'E18', type: 'normal', color: '#7c172b' },
+    { num: 'E19', type: 'normal', color: '#5e0f1e' },
+    { num: 'E20', type: 'normal', color: '#fcd6e8' },
+    { num: 'E21', type: 'normal', color: '#f8b8d5' },
+    { num: 'E22', type: 'normal', color: '#f596bf' },
+    { num: 'E23', type: 'normal', color: '#ef72a5' },
+    { num: 'E24', type: 'normal', color: '#e65691' },
+
+    // F系列 - 红色 (25 colors)
+    { num: 'F1', type: 'normal', color: '#f8b4a8' },
+    { num: 'F2', type: 'normal', color: '#f48977' },
+    { num: 'F3', type: 'normal', color: '#ec5a44' },
+    { num: 'F4', type: 'normal', color: '#e0301e' },
+    { num: 'F5', type: 'normal', color: '#c52318' },
+    { num: 'F6', type: 'normal', color: '#a81a14' },
+    { num: 'F7', type: 'normal', color: '#8c1210' },
+    { num: 'F8', type: 'normal', color: '#6e0b0b' },
+    { num: 'F9', type: 'normal', color: '#4f0505' },
+    { num: 'F10', type: 'normal', color: '#fcb8a8' },
+    { num: 'F11', type: 'normal', color: '#f99578' },
+    { num: 'F12', type: 'normal', color: '#f57248' },
+    { num: 'F13', type: 'normal', color: '#ed4f22' },
+    { num: 'F14', type: 'normal', color: '#de350b' },
+    { num: 'F15', type: 'normal', color: '#c02a09' },
+    { num: 'F16', type: 'normal', color: '#9e2006' },
+    { num: 'F17', type: 'normal', color: '#7c1703' },
+    { num: 'F18', type: 'normal', color: '#5a0f02' },
+    { num: 'F19', type: 'normal', color: '#380801' },
+    { num: 'F20', type: 'normal', color: '#fad2cc' },
+    { num: 'F21', type: 'normal', color: '#f5b5a8' },
+    { num: 'F22', type: 'normal', color: '#ec9080' },
+    { num: 'F23', type: 'normal', color: '#e06a56' },
+    { num: 'F24', type: 'normal', color: '#d44b35' },
+    { num: 'F25', type: 'normal', color: '#be321f' },
+
+    // G系列 - 橙棕色 (21 colors)
+    { num: 'G1', type: 'normal', color: '#f7d89d' },
+    { num: 'G2', type: 'normal', color: '#f4c06e' },
+    { num: 'G3', type: 'normal', color: '#eca941' },
+    { num: 'G4', type: 'normal', color: '#e08c1e' },
+    { num: 'G5', type: 'normal', color: '#c46e10' },
+    { num: 'G6', type: 'normal', color: '#a6530a' },
+    { num: 'G7', type: 'normal', color: '#8a3f07' },
+    { num: 'G8', type: 'normal', color: '#6c2d04' },
+    { num: 'G9', type: 'normal', color: '#4e1c02' },
+    { num: 'G10', type: 'normal', color: '#e8c4a0' },
+    { num: 'G11', type: 'normal', color: '#d4a87a' },
+    { num: 'G12', type: 'normal', color: '#c08c5a' },
+    { num: 'G13', type: 'normal', color: '#ac7040' },
+    { num: 'G14', type: 'normal', color: '#985a2c' },
+    { num: 'G15', type: 'normal', color: '#7e461e' },
+    { num: 'G16', type: 'normal', color: '#643414' },
+    { num: 'G17', type: 'normal', color: '#4a240c' },
+    { num: 'G18', type: 'normal', color: '#301606' },
+    { num: 'G19', type: 'normal', color: '#1a0c04' },
+    { num: 'G20', type: 'normal', color: '#a86538' },
+    { num: 'G21', type: 'normal', color: '#8c4d28' },
+
+    // H系列 - 黑白灰 (23 colors)
+    { num: 'H1', type: 'normal', color: '#ffffff' },
+    { num: 'H2', type: 'normal', color: '#f5f5f5' },
+    { num: 'H3', type: 'normal', color: '#e8e8e8' },
+    { num: 'H4', type: 'normal', color: '#d1d1d1' },
+    { num: 'H5', type: 'normal', color: '#b5b5b5' },
+    { num: 'H6', type: 'normal', color: '#999999' },
+    { num: 'H7', type: 'normal', color: '#7d7d7d' },
+    { num: 'H8', type: 'normal', color: '#666666' },
+    { num: 'H9', type: 'normal', color: '#4d4d4d' },
+    { num: 'H10', type: 'normal', color: '#333333' },
+    { num: 'H11', type: 'normal', color: '#1a1a1a' },
+    { num: 'H12', type: 'normal', color: '#000000' },
+    { num: 'H13', type: 'normal', color: '#f0e6d3' },
+    { num: 'H14', type: 'normal', color: '#ddd0bc' },
+    { num: 'H15', type: 'normal', color: '#c9b9a4' },
+    { num: 'H16', type: 'normal', color: '#b5a38c' },
+    { num: 'H17', type: 'normal', color: '#9f8b74' },
+    { num: 'H18', type: 'normal', color: '#897560' },
+    { num: 'H19', type: 'normal', color: '#6e5b4c' },
+    { num: 'H20', type: 'normal', color: '#55443a' },
+    { num: 'H21', type: 'normal', color: '#3c2e28' },
+    { num: 'H22', type: 'normal', color: '#241b17' },
+    { num: 'H23', type: 'normal', color: '#0f0a08' },
+
+    // M系列 - 莫兰迪色 (15 colors)
+    { num: 'M1', type: 'normal', color: '#e8dcc8' },
+    { num: 'M2', type: 'normal', color: '#d4c4b0' },
+    { num: 'M3', type: 'normal', color: '#c2b09c' },
+    { num: 'M4', type: 'normal', color: '#a89f8c' },
+    { num: 'M5', type: 'normal', color: '#96897a' },
+    { num: 'M6', type: 'normal', color: '#7d7168' },
+    { num: 'M7', type: 'normal', color: '#655c54' },
+    { num: 'M8', type: 'normal', color: '#4e4640' },
+    { num: 'M9', type: 'normal', color: '#37312d' },
+    { num: 'M10', type: 'normal', color: '#221e1b' },
+    { num: 'M11', type: 'normal', color: '#c4b8a8' },
+    { num: 'M12', type: 'normal', color: '#a89888' },
+    { num: 'M13', type: 'normal', color: '#8c7868' },
+    { num: 'M14', type: 'normal', color: '#706058' },
+    { num: 'M15', type: 'normal', color: '#544848' },
+
+    // P系列 - 扩展色 (约20 colors)
+    { num: 'P1', type: 'normal', color: '#ffe4c4' },
+    { num: 'P2', type: 'normal', color: '#ffc8a8' },
+    { num: 'P3', type: 'normal', color: '#ffac8c' },
+    { num: 'P4', type: 'normal', color: '#ff906c' },
+    { num: 'P5', type: 'normal', color: '#ff784c' },
+    { num: 'P6', type: 'normal', color: '#ff5c28' },
+    { num: 'P7', type: 'normal', color: '#e84518' },
+    { num: 'P8', type: 'normal', color: '#c83208' },
+    { num: 'P9', type: 'normal', color: '#a82800' },
+    { num: 'P10', type: 'normal', color: '#8c2000' },
+    { num: 'P11', type: 'normal', color: '#f5d6e8' },
+    { num: 'P12', type: 'normal', color: '#e8b8d0' },
+    { num: 'P13', type: 'normal', color: '#d898b8' },
+    { num: 'P14', type: 'normal', color: '#c878a0' },
+    { num: 'P15', type: 'normal', color: '#b85888' },
+    { num: 'P16', type: 'normal', color: '#a04070' },
+    { num: 'P17', type: 'normal', color: '#882858' },
+    { num: 'P18', type: 'normal', color: '#701040' },
+    { num: 'P19', type: 'normal', color: '#580028' },
+    { num: 'P20', type: 'normal', color: '#400010' },
+
+    // Q系列 - 扩展色 (约15 colors)
+    { num: 'Q1', type: 'normal', color: '#d4f5d4' },
+    { num: 'Q2', type: 'normal', color: '#a8e8a8' },
+    { num: 'Q3', type: 'normal', color: '#78dc78' },
+    { num: 'Q4', type: 'normal', color: '#48c848' },
+    { num: 'Q5', type: 'normal', color: '#20b820' },
+    { num: 'Q6', type: 'normal', color: '#00a000' },
+    { num: 'Q7', type: 'normal', color: '#008800' },
+    { num: 'Q8', type: 'normal', color: '#007000' },
+    { num: 'Q9', type: 'normal', color: '#005800' },
+    { num: 'Q10', type: 'normal', color: '#004000' },
+    { num: 'Q11', type: 'normal', color: '#e8f5e8' },
+    { num: 'Q12', type: 'normal', color: '#c8e8c8' },
+    { num: 'Q13', type: 'normal', color: '#a8dca8' },
+    { num: 'Q14', type: 'normal', color: '#88d088' },
+    { num: 'Q15', type: 'normal', color: '#68c068' },
+
+    // R系列 - 扩展色 (约15 colors)
+    { num: 'R1', type: 'normal', color: '#d0e8f5' },
+    { num: 'R2', type: 'normal', color: '#a8d8ec' },
+    { num: 'R3', type: 'normal', color: '#78c8e4' },
+    { num: 'R4', type: 'normal', color: '#48b8dc' },
+    { num: 'R5', type: 'normal', color: '#20a8d4' },
+    { num: 'R6', type: 'normal', color: '#0090bc' },
+    { num: 'R7', type: 'normal', color: '#0078a0' },
+    { num: 'R8', type: 'normal', color: '#006288' },
+    { num: 'R9', type: 'normal', color: '#004c70' },
+    { num: 'R10', type: 'normal', color: '#003858' },
+    { num: 'R11', type: 'normal', color: '#d0e0f8' },
+    { num: 'R12', type: 'normal', color: '#a8c8f0' },
+    { num: 'R13', type: 'normal', color: '#78b0e8' },
+    { num: 'R14', type: 'normal', color: '#4898e0' },
+    { num: 'R15', type: 'normal', color: '#2080d8' },
+
+    // T系列 - 扩展色 (约10 colors)
+    { num: 'T1', type: 'normal', color: '#f8e8d8' },
+    { num: 'T2', type: 'normal', color: '#f0d0b8' },
+    { num: 'T3', type: 'normal', color: '#e8b898' },
+    { num: 'T4', type: 'normal', color: '#e0a078' },
+    { num: 'T5', type: 'normal', color: '#d88858' },
+    { num: 'T6', type: 'normal', color: '#d07040' },
+    { num: 'T7', type: 'normal', color: '#c05828' },
+    { num: 'T8', type: 'normal', color: '#a84010' },
+    { num: 'T9', type: 'normal', color: '#902c00' },
+    { num: 'T10', type: 'normal', color: '#781800' },
+
+    // Y系列 - 扩展色 (约8 colors)
+    { num: 'Y1', type: 'normal', color: '#f8f0e0' },
+    { num: 'Y2', type: 'normal', color: '#f0e0c8' },
+    { num: 'Y3', type: 'normal', color: '#e8d0b0' },
+    { num: 'Y4', type: 'normal', color: '#e0c098' },
+    { num: 'Y5', type: 'normal', color: '#d8b080' },
+    { num: 'Y6', type: 'normal', color: '#d0a068' },
+    { num: 'Y7', type: 'normal', color: '#c89050' },
+    { num: 'Y8', type: 'normal', color: '#c08038' },
+
+    // Z系列 - 扩展色 (约8 colors)
+    { num: 'Z1', type: 'normal', color: '#e0e8e0' },
+    { num: 'Z2', type: 'normal', color: '#c8d8c8' },
+    { num: 'Z3', type: 'normal', color: '#b0c8b0' },
+    { num: 'Z4', type: 'normal', color: '#98b898' },
+    { num: 'Z5', type: 'normal', color: '#80a880' },
+    { num: 'Z6', type: 'normal', color: '#689868' },
+    { num: 'Z7', type: 'normal', color: '#508850' },
+    { num: 'Z8', type: 'normal', color: '#387838' }
+];
+
+// ============================================
+// 内置模板
+// ============================================
+
+const BUILT_IN_TEMPLATES = [
+    {
+        name: '爱心',
+        width: 11,
+        height: 11,
+        data: [
+            null,null,'#FF6B6B','#FF6B6B',null,null,null,'#FF6B6B','#FF6B6B',null,null,
+            null,'#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',null,
+            '#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',
+            '#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',
+            '#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',
+            '#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',
+            '#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',
+            null,'#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',null,
+            null,null,'#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',null,null,
+            null,null,null,'#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',null,null,null,
+            null,null,null,null,'#FF6B6B','#FF6B6B','#FF6B6B',null,null,null,null,
+        ]
+    },
+    {
+        name: '星星',
+        width: 11,
+        height: 11,
+        data: [
+            null,null,null,null,'#FFD700','#FFD700',null,null,null,null,null,
+            null,null,null,'#FFD700','#FFD700','#FFD700','#FFD700',null,null,null,null,
+            null,null,null,'#FFD700','#FFD700','#FFD700','#FFD700',null,null,null,null,
+            '#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700',
+            '#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700',
+            null,'#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700',null,
+            null,null,'#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700',null,null,
+            null,null,'#FFD700','#FFD700','#FFD700',null,null,'#FFD700','#FFD700',null,null,
+            null,'#FFD700','#FFD700','#FFD700',null,null,null,null,'#FFD700','#FFD700',null,
+            '#FFD700',null,null,null,null,null,null,null,null,null,'#FFD700',
+        ]
+    },
+    {
+        name: '笑脸',
+        width: 11,
+        height: 11,
+        data: [
+            null,null,'#FFE135','#FFE135',null,null,null,null,'#FFE135','#FFE135',null,
+            null,'#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135',null,
+            '#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135',
+            '#FFE135','#FFE135','#000000','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#000000','#FFE135','#FFE135',
+            '#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135',
+            '#FFE135','#FFE135','#FFE135','#000000','#FFE135','#FFE135','#FFE135','#000000','#FFE135','#FFE135','#FFE135',
+            '#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135',
+            null,'#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135',null,
+            null,null,'#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135',null,null,
+            null,null,null,null,null,null,null,null,null,null,null,
+            null,null,null,null,null,null,null,null,null,null,null,
+        ]
+    }
+];
+
+// 工具定义
+const TOOLS = {
+    PENCIL: 'pencil',
+    ERASER: 'eraser',
+    FILL: 'fill',
+    RECT: 'rect',
+    LINE: 'line'
+};
+
+// 画布限制
+const CANVAS_MIN_SIZE = 10;
+const CANVAS_MAX_SIZE = 200;
+const DEFAULT_CANVAS_SIZE = 29;
+
+// ============================================
+// 状态管理
+// ============================================
+
+const state = {
+    canvasWidth: DEFAULT_CANVAS_SIZE,
+    canvasHeight: DEFAULT_CANVAS_SIZE,
+    currentTool: TOOLS.PENCIL,
+    currentColor: '#FF0000',
+    zoom: 1,
+    minZoom: 0.25,   // 最小缩放
+    maxZoom: 4,       // 最大缩放
+    panX: 0,        // 画布平移 X
+    panY: 0,        // 画布平移 Y
+    isDrawing: false,
+    isPanning: false, // 是否在平移中
+    startX: 0,
+    startY: 0,
+    panStartX: 0,    // 平移起始 X
+    panStartY: 0,    // 平移起始 Y
+    gridData: null,  // 二维数组存储像素颜色
+    history: [],     // 撤销/重做历史
+    historyIndex: -1
+};
+
+// 初始化 gridData
+initGridData();
+
+// ============================================
+// LocalStorage 存储
+// ============================================
+
+const STORAGE_KEY = 'pindou_works';
+
+function autoSave() {
+    const data = {
+        width: state.canvasWidth,
+        height: state.canvasHeight,
+        gridData: state.gridData,
+        timestamp: Date.now()
+    };
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+        console.warn('自动保存失败:', e);
+    }
+}
+
+function loadFromStorage() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return false;
+
+    try {
+        const data = JSON.parse(saved);
+        state.canvasWidth = data.width;
+        state.canvasHeight = data.height;
+        state.gridData = data.gridData;
+
+        canvas.width = state.canvasWidth * PIXEL_SIZE;
+        canvas.height = state.canvasHeight * PIXEL_SIZE;
+
+        renderCanvas();
+        saveToHistory();
+        return true;
+    } catch (e) {
+        console.error('Failed to load saved data:', e);
+        return false;
+    }
+}
+
+// 定时保存（每30秒）
+let autoSaveInterval = setInterval(autoSave, 30000);
+
+// ============================================
+// 画布操作
+// ============================================
+
+let canvas, ctx;
+const PIXEL_SIZE = 16;  // 每个像素在屏幕上的大小
+
+function initCanvas() {
+    canvas = document.getElementById('pixelCanvas');
+    ctx = canvas.getContext('2d');
+
+    // 设置 canvas 尺寸
+    canvas.width = state.canvasWidth * PIXEL_SIZE;
+    canvas.height = state.canvasHeight * PIXEL_SIZE;
+
+    // 如果 gridData 还没有初始化（首次加载时），则初始化
+    // 注意：loadFromStorage() 会设置 gridData，不要覆盖
+    if (!state.gridData) {
+        initGridData();
+    }
+
+    // 渲染
+    renderCanvas();
+
+    // 保存初始历史
+    saveToHistory();
+}
+
+function updateCanvasTransform() {
+    const scale = state.zoom;
+    const tx = state.panX;
+    const ty = state.panY;
+    canvas.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    canvas.style.transformOrigin = '0 0';
+}
+
+function renderCanvas() {
+    // 清空画布
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 绘制每个像素
+    for (let y = 0; y < state.canvasHeight; y++) {
+        for (let x = 0; x < state.canvasWidth; x++) {
+            const color = state.gridData[y][x];
+            if (color) {
+                ctx.fillStyle = color;
+                ctx.fillRect(
+                    x * PIXEL_SIZE,
+                    y * PIXEL_SIZE,
+                    PIXEL_SIZE,
+                    PIXEL_SIZE
+                );
+            }
+        }
+    }
+
+    // 绘制网格线
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= state.canvasWidth; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * PIXEL_SIZE, 0);
+        ctx.lineTo(x * PIXEL_SIZE, canvas.height);
+        ctx.stroke();
+    }
+    for (let y = 0; y <= state.canvasHeight; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * PIXEL_SIZE);
+        ctx.lineTo(canvas.width, y * PIXEL_SIZE);
+        ctx.stroke();
+    }
+
+    updateCanvasTransform();
+    updateStatusBar();
+}
+
+// 事件处理
+function handleCanvasMouseDown(e) {
+    // 中键或右键按下时开始平移
+    if (e.button === 1 || e.button === 2) {
+        state.isPanning = true;
+        state.panStartX = e.clientX - state.panX;
+        state.panStartY = e.clientY - state.panY;
+        e.preventDefault();
+        return;
+    }
+
+    if (!canvas || !ctx) return;
+
+    try {
+        state.isDrawing = true;
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        // getBoundingClientRect 已经考虑了 transform，直接计算相对于画布的位置
+        const x = Math.floor((e.clientX - rect.left) / (PIXEL_SIZE * state.zoom));
+        const y = Math.floor((e.clientY - rect.top) / (PIXEL_SIZE * state.zoom));
+        state.startX = x;
+        state.startY = y;
+
+        if (state.currentTool === TOOLS.FILL) {
+            floodFill(x, y, state.currentColor);
+        } else {
+            setPixel(x, y, state.currentColor);
+        }
+    } catch (err) {
+        console.warn('Canvas mouse down error:', err);
+        state.isDrawing = false;
+    }
+}
+
+function handleCanvasMouseMove(e) {
+    // 平移模式
+    if (state.isPanning) {
+        state.panX = e.clientX - state.panStartX;
+        state.panY = e.clientY - state.panStartY;
+        updateCanvasTransform();
+        return;
+    }
+
+    if (!state.isDrawing || !canvas) return;
+
+    try {
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        const x = Math.floor((e.clientX - rect.left) / (PIXEL_SIZE * state.zoom));
+        const y = Math.floor((e.clientY - rect.top) / (PIXEL_SIZE * state.zoom));
+
+        if (state.currentTool === TOOLS.PENCIL) {
+            setPixel(x, y, state.currentColor);
+        } else if (state.currentTool === TOOLS.ERASER) {
+            setPixel(x, y, null);
+        }
+    } catch (err) {
+        console.warn('Canvas mouse move error:', err);
+    }
+}
+
+function handleCanvasMouseUp(e) {
+    if (state.isPanning) {
+        state.isPanning = false;
+        return;
+    }
+    if (state.isDrawing && state.currentTool !== TOOLS.PENCIL && state.currentTool !== TOOLS.ERASER && state.currentTool !== TOOLS.FILL) {
+        try {
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+
+            const x = Math.floor((e.clientX - rect.left) / (PIXEL_SIZE * state.zoom));
+            const y = Math.floor((e.clientY - rect.top) / (PIXEL_SIZE * state.zoom));
+            drawShape(state.startX, state.startY, x, y, state.currentColor);
+        } catch (err) {
+            console.warn('Canvas mouse up error:', err);
+        }
+    }
+    state.isDrawing = false;
+    saveToHistory();
+}
+
+function setPixel(x, y, color) {
+    if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
+        state.gridData[y][x] = color;
+        renderCanvas();
+        autoSave();
+    }
+}
+
+function floodFill(x, y, color) {
+    if (x < 0 || x >= state.canvasWidth || y < 0 || y >= state.canvasHeight) return;
+    const targetColor = state.gridData[y][x];
+    if (targetColor === color) return;
+
+    const stack = [[x, y]];
+    const visited = new Set();
+
+    while (stack.length > 0) {
+        const [cx, cy] = stack.pop();
+        const key = `${cx},${cy}`;
+
+        if (visited.has(key)) continue;
+        if (cx < 0 || cx >= state.canvasWidth || cy < 0 || cy >= state.canvasHeight) continue;
+        if (state.gridData[cy][cx] !== targetColor) continue;
+
+        visited.add(key);
+        state.gridData[cy][cx] = color;
+
+        stack.push([cx + 1, cy]);
+        stack.push([cx - 1, cy]);
+        stack.push([cx, cy + 1]);
+        stack.push([cx, cy - 1]);
+    }
+
+    renderCanvas();
+    autoSave();
+}
+
+function drawShape(x1, y1, x2, y2, color) {
+    // 简化的矩形绘制
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    const minY = Math.min(y1, y2);
+    const maxY = Math.max(y1, y2);
+
+    for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+            if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
+                state.gridData[y][x] = color;
+            }
+        }
+    }
+
+    renderCanvas();
+    autoSave();
+}
+
+function updateStatusBar() {
+    document.getElementById('statusSize').textContent =
+        `画布: ${state.canvasWidth}×${state.canvasHeight}`;
+    document.getElementById('statusZoom').textContent =
+        `缩放: ${Math.round(state.zoom * 100)}%`;
+}
+
+// ============================================
+// 导出功能
+// ============================================
+
+function exportAsPNG() {
+    // 根据画布尺寸动态调整像素大小（确保100×100时图片约3MB）
+    const baseCellSize = state.canvasWidth >= 100 || state.canvasHeight >= 100 ? 60 : 40;
+    const CELL_SIZE = baseCellSize;
+    const LABEL_WIDTH = 50;   // 序号标签宽度（增大）
+    const GRID_GAP = 10;      // 辅助线间隔（每10格一道）
+
+    // 计算画布尺寸（包含序号区域）
+    const patternWidth = state.canvasWidth * CELL_SIZE;
+    const patternHeight = state.canvasHeight * CELL_SIZE;
+    const totalWidth = patternWidth + LABEL_WIDTH;
+    const totalHeight = patternHeight + LABEL_WIDTH;
+
+    // 创建导出用的临时 canvas
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = totalWidth;
+    exportCanvas.height = totalHeight;
+    const exportCtx = exportCanvas.getContext('2d');
+
+    // 白色背景
+    exportCtx.fillStyle = '#ffffff';
+    exportCtx.fillRect(0, 0, totalWidth, totalHeight);
+
+    // 绘制序号背景
+    exportCtx.fillStyle = '#f0f0f0';
+    exportCtx.fillRect(0, 0, LABEL_WIDTH, LABEL_WIDTH);
+
+    // 绘制列序号（上方）- 加粗加大
+    exportCtx.fillStyle = '#000000';
+    exportCtx.font = 'bold 12px monospace';
+    exportCtx.textAlign = 'center';
+    exportCtx.textBaseline = 'middle';
+    for (let x = 0; x < state.canvasWidth; x++) {
+        const cx = LABEL_WIDTH + x * CELL_SIZE + CELL_SIZE / 2;
+        const cy = LABEL_WIDTH / 2;
+        exportCtx.fillText((x + 1).toString(), cx, cy);
+    }
+
+    // 绘制行序号（左侧）- 加粗加大
+    exportCtx.textAlign = 'center';
+    for (let y = 0; y < state.canvasHeight; y++) {
+        const cx = LABEL_WIDTH / 2;
+        const cy = LABEL_WIDTH + y * CELL_SIZE + CELL_SIZE / 2;
+        exportCtx.fillText((y + 1).toString(), cx, cy);
+    }
+
+    // 绘制像素格子
+    for (let y = 0; y < state.canvasHeight; y++) {
+        for (let x = 0; x < state.canvasWidth; x++) {
+            const color = state.gridData[y][x];
+            const px = LABEL_WIDTH + x * CELL_SIZE;
+            const py = LABEL_WIDTH + y * CELL_SIZE;
+
+            if (color) {
+                exportCtx.fillStyle = color;
+                exportCtx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+            }
+
+            // 绘制格子边框（浅灰）
+            exportCtx.strokeStyle = '#dddddd';
+            exportCtx.lineWidth = 0.5;
+            exportCtx.strokeRect(px, py, CELL_SIZE, CELL_SIZE);
+
+            // 在格子中心显示色号 - 加黑加粗
+            if (CELL_SIZE >= 15) {
+                exportCtx.textAlign = 'center';
+                exportCtx.textBaseline = 'middle';
+
+                // 找到对应的色号
+                const colorNum = findColorNumber(color);
+                if (colorNum) {
+                    // 根据背景颜色决定文字颜色（保证对比度）
+                    const rgb = hexToRgb(color);
+                    const brightness = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+                    const textColor = brightness > 128 ? '#000000' : '#ffffff';
+
+                    // 绘制文字描边（加粗效果）
+                    exportCtx.strokeStyle = brightness > 128 ? '#ffffff' : '#000000';
+                    exportCtx.lineWidth = 3;
+                    exportCtx.font = `bold ${Math.max(10, CELL_SIZE / 4)}px monospace`;
+                    exportCtx.strokeText(colorNum, px + CELL_SIZE / 2, py + CELL_SIZE / 2);
+
+                    // 绘制文字
+                    exportCtx.fillStyle = textColor;
+                    exportCtx.fillText(colorNum, px + CELL_SIZE / 2, py + CELL_SIZE / 2);
+                }
+            }
+        }
+    }
+
+    // 绘制辅助线（每10格一道，深色醒目线条）
+    exportCtx.strokeStyle = '#333333';
+    exportCtx.lineWidth = 2;
+
+    // 垂直辅助线
+    for (let x = 10; x < state.canvasWidth; x += GRID_GAP) {
+        const px = LABEL_WIDTH + x * CELL_SIZE;
+        exportCtx.beginPath();
+        exportCtx.moveTo(px, LABEL_WIDTH);
+        exportCtx.lineTo(px, totalHeight);
+        exportCtx.stroke();
+    }
+
+    // 水平辅助线
+    for (let y = 10; y < state.canvasHeight; y += GRID_GAP) {
+        const py = LABEL_WIDTH + y * CELL_SIZE;
+        exportCtx.beginPath();
+        exportCtx.moveTo(LABEL_WIDTH, py);
+        exportCtx.lineTo(totalWidth, py);
+        exportCtx.stroke();
+    }
+
+    // 绘制分隔线（序号区域边框）
+    exportCtx.strokeStyle = '#666666';
+    exportCtx.lineWidth = 2;
+    exportCtx.beginPath();
+    exportCtx.moveTo(LABEL_WIDTH, 0);
+    exportCtx.lineTo(LABEL_WIDTH, totalHeight);
+    exportCtx.moveTo(0, LABEL_WIDTH);
+    exportCtx.lineTo(totalWidth, LABEL_WIDTH);
+    exportCtx.stroke();
+
+    // 转换为 Blob 并下载（高质量 PNG）
+    // 使用 larger canvas 和更高质量的设置
+    exportCanvas.toBlob((blob) => {
+        // 如果图片太小（目标3MB），尝试增大像素
+        if (blob.size < 2 * 1024 * 1024 && CELL_SIZE < 80) {
+            // 重新以更大尺寸绘制
+            const scale = 2;
+            const scaledCanvas = document.createElement('canvas');
+            scaledCanvas.width = totalWidth * scale;
+            scaledCanvas.height = totalHeight * scale;
+            const scaledCtx = scaledCanvas.getContext('2d');
+            scaledCtx.scale(scale, scale);
+            scaledCtx.drawImage(exportCanvas, 0, 0);
+
+            scaledCanvas.toBlob((newBlob) => {
+                const url = URL.createObjectURL(newBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `pindou-${Date.now()}.png`;
+                a.click();
+                URL.revokeObjectURL(url);
+            }, 'image/png');
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `pindou-${Date.now()}.png`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    }, 'image/png');
+}
+
+// 根据颜色值查找色号
+function findColorNumber(color) {
+    if (!color) return null;
+    for (const c of MARD_COLORS) {
+        if (c.color.toLowerCase() === color.toLowerCase()) {
+            return c.num;
+        }
+    }
+    return null;
+}
+
+// ============================================
+// 工具函数
+// ============================================
+
+function deepCopy(obj) {
+    return structuredClone(obj);
+}
+
+function initGridData() {
+    state.gridData = [];
+    for (let y = 0; y < state.canvasHeight; y++) {
+        const row = [];
+        for (let x = 0; x < state.canvasWidth; x++) {
+            row.push(null);
+        }
+        state.gridData.push(row);
+    }
+}
+
+function saveToHistory() {
+    // 移除当前位置之后的历史
+    state.history = state.history.slice(0, state.historyIndex + 1);
+    // 保存当前状态
+    state.history.push(deepCopy(state.gridData));
+    state.historyIndex++;
+    // 限制历史记录数量
+    if (state.history.length > 50) {
+        state.history.shift();
+        state.historyIndex--;
+    }
+}
+
+function undo() {
+    if (state.historyIndex > 0) {
+        state.historyIndex--;
+        state.gridData = deepCopy(state.history[state.historyIndex]);
+        renderCanvas();
+    }
+}
+
+function redo() {
+    if (state.historyIndex < state.history.length - 1) {
+        state.historyIndex++;
+        state.gridData = deepCopy(state.history[state.historyIndex]);
+        renderCanvas();
+    }
+}
+
+// ============================================
+// 图片转图案
+// ============================================
+
+let uploadedImage = null;
+
+function showImageConvertPanel() {
+    document.getElementById('imageConvertPanel').style.display = 'block';
+}
+
+function hideImageConvertPanel() {
+    document.getElementById('imageConvertPanel').style.display = 'none';
+    uploadedImage = null;
+    document.getElementById('imageInput').value = '';
+    document.getElementById('previewImg').src = '';
+}
+
+// ============================================
+// 模板库
+// ============================================
+
+function showTemplatePanel() {
+    const templateList = document.getElementById('templateList');
+    if (!templateList) return;
+    templateList.innerHTML = '';
+
+    BUILT_IN_TEMPLATES.forEach((template, index) => {
+        const templateCard = document.createElement('div');
+        templateCard.style.cssText = 'background:#0f3460; padding:12px; border-radius:8px; cursor:pointer; text-align:center;';
+        templateCard.innerHTML = `
+            <div style="width:60px; height:60px; margin:0 auto 8px; display:flex; align-items:center; justify-content:center; font-size:24px;">
+                ${template.name[0]}
+            </div>
+            <div style="font-size:12px;">${template.name}</div>
+        `;
+        templateCard.addEventListener('click', () => loadTemplate(index));
+        templateList.appendChild(templateCard);
+    });
+
+    document.getElementById('templatePanel').style.display = 'block';
+}
+
+function hideTemplatePanel() {
+    document.getElementById('templatePanel').style.display = 'none';
+}
+
+function loadTemplate(index) {
+    const template = BUILT_IN_TEMPLATES[index];
+    if (!template) return;
+
+    state.canvasWidth = template.width;
+    state.canvasHeight = template.height;
+    canvas.width = template.width * PIXEL_SIZE;
+    canvas.height = template.height * PIXEL_SIZE;
+
+    state.gridData = [];
+    for (let y = 0; y < template.height; y++) {
+        const row = [];
+        for (let x = 0; x < template.width; x++) {
+            row.push(template.data[y * template.width + x]);
+        }
+        state.gridData.push(row);
+    }
+
+    renderCanvas();
+    saveToHistory();
+    hideTemplatePanel();
+}
+
+function handleImageUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+            uploadedImage = img;
+            document.getElementById('previewImg').src = event.target.result;
+        };
+        img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function convertImageToPattern() {
+    if (!uploadedImage) return;
+
+    let gridWidth, gridHeight;
+
+    // 获取尺寸设置
+    const sizeSelect = document.getElementById('gridSizeSelect').value;
+    if (sizeSelect === 'custom') {
+        gridWidth = parseInt(document.getElementById('customWidth').value) || 50;
+        gridHeight = parseInt(document.getElementById('customHeight').value) || 50;
+        // 限制范围
+        gridWidth = Math.max(8, Math.min(200, gridWidth));
+        gridHeight = Math.max(8, Math.min(200, gridHeight));
+    } else {
+        gridWidth = gridHeight = parseInt(sizeSelect);
+    }
+
+    // 创建临时 canvas 来采样图片
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = gridWidth;
+    tempCanvas.height = gridHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    // 绘制并缩放图片（保持宽高比）
+    tempCtx.drawImage(uploadedImage, 0, 0, gridWidth, gridHeight);
+
+    // 获取像素数据
+    const imageData = tempCtx.getImageData(0, 0, gridWidth, gridHeight);
+
+    // 调整画布尺寸
+    state.canvasWidth = gridWidth;
+    state.canvasHeight = gridHeight;
+    canvas.width = gridWidth * PIXEL_SIZE;
+    canvas.height = gridHeight * PIXEL_SIZE;
+    initGridData();
+
+    // 转换每个像素
+    for (let y = 0; y < gridHeight; y++) {
+        for (let x = 0; x < gridWidth; x++) {
+            const idx = (y * gridWidth + x) * 4;
+            const r = imageData.data[idx];
+            const g = imageData.data[idx + 1];
+            const b = imageData.data[idx + 2];
+            const a = imageData.data[idx + 3];
+
+            // 检测是否为空白/透明/接近白色的背景
+            const isEmpty = isBackgroundColor(r, g, b, a);
+            if (isEmpty) {
+                // 背景用白色
+                state.gridData[y][x] = '#FFFFFF';
+            } else {
+                const matchedColor = findClosestColorLab(r, g, b);
+                state.gridData[y][x] = matchedColor;
+            }
+        }
+    }
+
+    // 对小尺寸图像应用色块融合和边界增强算法
+    if (gridWidth <= 100 || gridHeight <= 100) {
+        enhanceColorBlocks();
+    }
+
+    renderCanvas();
+    saveToHistory();
+    hideImageConvertPanel();
+}
+
+// 色块融合和边界增强算法（针对小尺寸图像）
+function enhanceColorBlocks() {
+    const width = state.canvasWidth;
+    const height = state.canvasHeight;
+    const threshold = 15; // 颜色差异阈值，低于此值认为是相近颜色
+
+    // 创建临时网格用于区域生长
+    const tempGrid = state.gridData.map(row => [...row]);
+    const visited = Array.from({ length: height }, () => Array(width).fill(false));
+
+    // 方向：上下左右
+    const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+
+    // 计算两个颜色的差异
+    function colorDistance(c1, c2) {
+        if (!c1 || !c2) return Infinity;
+        const rgb1 = hexToRgb(c1);
+        const rgb2 = hexToRgb(c2);
+        return Math.sqrt(
+            Math.pow(rgb1.r - rgb2.r, 2) +
+            Math.pow(rgb1.g - rgb2.g, 2) +
+            Math.pow(rgb1.b - rgb2.b, 2)
+        );
+    }
+
+    // 区域生长：将相近颜色融合
+    function floodFillMerge(startX, startY, targetColor) {
+        const queue = [[startX, startY]];
+        const region = [];
+
+        while (queue.length > 0) {
+            const [x, y] = queue.shift();
+            if (x < 0 || x >= width || y < 0 || y >= height) continue;
+            if (visited[y][x]) continue;
+            if (tempGrid[y][x] !== targetColor) continue;
+
+            visited[y][x] = true;
+            region.push([x, y]);
+
+            for (const [dx, dy] of directions) {
+                queue.push([x + dx, y + dy]);
+            }
+        }
+
+        return region;
+    }
+
+    // 遍历所有格子进行区域生长
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (visited[y][x]) continue;
+
+            const currentColor = tempGrid[y][x];
+            const region = floodFillMerge(x, y, currentColor);
+
+            // 如果区域太小（噪声点），尝试合并到周围的主颜色
+            if (region.length <= 3) {
+                // 找到周围的主要颜色
+                const neighborColors = {};
+                for (const [rx, ry] of region) {
+                    for (const [dx, dy] of directions) {
+                        const nx = rx + dx, ny = ry + dy;
+                        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                            const nc = tempGrid[ny][nx];
+                            if (nc !== currentColor) {
+                                neighborColors[nc] = (neighborColors[nc] || 0) + 1;
+                            }
+                        }
+                    }
+                }
+
+                // 找到最多的邻居颜色
+                let maxCount = 0;
+                let mainColor = null;
+                for (const [color, count] of Object.entries(neighborColors)) {
+                    if (count > maxCount) {
+                        maxCount = count;
+                        mainColor = color;
+                    }
+                }
+
+                // 如果找到主颜色且差异不大，则合并
+                if (mainColor && colorDistance(currentColor, mainColor) < threshold * 2) {
+                    for (const [rx, ry] of region) {
+                        state.gridData[ry][rx] = mainColor;
+                    }
+                }
+            }
+        }
+    }
+
+    // 边界增强：强化不同颜色之间的边界
+    const edgeGrid = Array.from({ length: height }, () => Array(width).fill(false));
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const currentColor = state.gridData[y][x];
+
+            // 检查上下左右是否有不同颜色
+            for (const [dx, dy] of directions) {
+                const nx = x + dx, ny = y + dy;
+                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                    const neighborColor = state.gridData[ny][nx];
+                    if (currentColor !== neighborColor) {
+                        edgeGrid[y][x] = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 检测是否为背景色（空白/透明/接近白色）
+function isBackgroundColor(r, g, b, a) {
+    // 透明像素
+    if (a < 128) return true;
+
+    // 接近白色的被认为是背景
+    const brightness = (r + g + b) / 3;
+    const saturation = Math.max(r, g, b) - Math.min(r, g, b);
+    if (brightness > 240 && saturation < 20) return true;
+
+    return false;
+}
+
+// ============================================
+// 颜色匹配算法（优化版：使用 LAB 色彩空间）
+// ============================================
+
+// RGB 转 LAB（通过 XYZ）
+function rgbToLab(r, g, b) {
+    // RGB 转 normalized RGB (0-1)
+    let rr = r / 255, gg = g / 255, bb = b / 255;
+
+    // Gamma 校正
+    rr = rr > 0.04045 ? Math.pow((rr + 0.055) / 1.055, 2.4) : rr / 12.92;
+    gg = gg > 0.04045 ? Math.pow((gg + 0.055) / 1.055, 2.4) : gg / 12.92;
+    bb = bb > 0.04045 ? Math.pow((bb + 0.055) / 1.055, 2.4) : bb / 12.92;
+
+    // 转 XYZ
+    let x = (rr * 0.4124564 + gg * 0.3575761 + bb * 0.1804375) / 0.95047;
+    let y = (rr * 0.2126729 + gg * 0.7151522 + bb * 0.0721750);
+    let z = (rr * 0.0193339 + gg * 0.1191920 + bb * 0.9503041) / 1.08883;
+
+    // XYZ 转 LAB
+    x = x > 0.008856 ? Math.pow(x, 1/3) : (7.787 * x) + 16/116;
+    y = y > 0.008856 ? Math.pow(y, 1/3) : (7.787 * y) + 16/116;
+    z = z > 0.008856 ? Math.pow(z, 1/3) : (7.787 * z) + 16/116;
+
+    const L = (116 * y) - 16;
+    const a = 500 * (x - y);
+    const bLab = 200 * (y - z);
+
+    return { L, a, b: bLab };
+}
+
+// CIEDE2000 色差公式（简化版，返回更准确的颜色差异感知度量）
+function ciede2000(rgb1, rgb2) {
+    const lab1 = rgbToLab(rgb1.r, rgb1.g, rgb1.b);
+    const lab2 = rgbToLab(rgb2.r, rgb2.g, rgb2.b);
+
+    // 计算 Delta L
+    const deltaL = lab2.L - lab1.L;
+
+    // 计算 C (chroma)
+    const C1 = Math.sqrt(lab1.a * lab1.a + lab1.b * lab1.b);
+    const C2 = Math.sqrt(lab2.a * lab2.a + lab2.b * lab2.b);
+    const deltaC = C2 - C1;
+
+    // 计算 Delta H
+    const deltaH = Math.sqrt(
+        Math.pow(lab2.L - lab1.L, 2) +
+        Math.pow(lab2.a - lab1.a, 2) +
+        Math.pow(lab2.b - lab1.b, 2) - Math.pow(deltaL, 2) - Math.pow(deltaC, 2)
+    );
+
+    // 简化的 CIEDE2000 权重
+    const kL = 1, kC = 1, kH = 1;
+    const SL = 1, SC = 1, SH = 1;
+
+    // 返回加权色差
+    return Math.sqrt(
+        Math.pow(deltaL / (kL * SL), 2) +
+        Math.pow(deltaC / (kC * SC), 2) +
+        Math.pow(deltaH / (kH * SH), 2)
+    );
+}
+
+// 使用 LAB 色彩空间的颜色匹配
+function findClosestColorLab(r, g, b) {
+    let closestColor = '#000000';
+    let minDistance = Infinity;
+    const inputRgb = { r, g, b };
+
+    for (const c of MARD_COLORS) {
+        const rgb = hexToRgb(c.color);
+        // 使用简化版 CIEDE2000
+        const distance = ciede2000(inputRgb, rgb);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestColor = c.color;
+        }
+    }
+
+    return closestColor;
+}
+
+// 原来的 RGB 最近邻（保留作为备用）
+function findClosestColor(r, g, b) {
+    let closestColor = '#000000';
+    let minDistance = Infinity;
+
+    for (const c of MARD_COLORS) {
+        const rgb = hexToRgb(c.color);
+        // 使用带权重的欧几里得距离（人眼对绿色更敏感）
+        const distance = Math.sqrt(
+            Math.pow(r - rgb.r, 2) * 0.3 +
+            Math.pow(g - rgb.g, 2) * 0.59 +
+            Math.pow(b - rgb.b, 2) * 0.11
+        );
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestColor = c.color;
+        }
+    }
+
+    return closestColor;
+}
+
+function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : { r: 0, g: 0, b: 0 };
+}
+
+function initEventListeners() {
+    canvas.addEventListener('mousedown', handleCanvasMouseDown);
+    canvas.addEventListener('mousemove', handleCanvasMouseMove);
+    canvas.addEventListener('mouseup', handleCanvasMouseUp);
+    canvas.addEventListener('mouseleave', () => {
+        state.isDrawing = false;
+        state.isPanning = false;
+    });
+    // 阻止右键菜单
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // 鼠标滚轮缩放
+    document.getElementById('canvasContainer').addEventListener('wheel', (e) => {
+        e.preventDefault();
+        try {
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            const newZoom = Math.max(state.minZoom, Math.min(state.maxZoom, state.zoom + delta));
+
+            // 以鼠标位置为中心缩放
+            if (newZoom !== state.zoom && canvas) {
+                const rect = canvas.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {
+                    const mouseX = e.clientX - rect.left;
+                    const mouseY = e.clientY - rect.top;
+
+                    // 计算缩放前后鼠标在画布上的位置
+                    const oldScaledX = (mouseX - state.panX) / state.zoom;
+                    const oldScaledY = (mouseY - state.panY) / state.zoom;
+
+                    state.zoom = newZoom;
+
+                    // 调整平移使鼠标位置保持不变
+                    state.panX = mouseX - oldScaledX * state.zoom;
+                    state.panY = mouseY - oldScaledY * state.zoom;
+
+                    updateCanvasTransform();
+                    updateStatusBar();
+                }
+            }
+        } catch (err) {
+            console.warn('Wheel zoom error:', err);
+        }
+    }, { passive: false });
+
+    // 铅笔工具
+    document.getElementById('btnPencil').addEventListener('click', () => {
+        state.currentTool = TOOLS.PENCIL;
+        document.getElementById('btnPencil').classList.add('active');
+        document.getElementById('btnEraser').classList.remove('active', 'eraser-active');
+        canvas.style.cursor = 'crosshair';
+    });
+
+    // 橡皮擦工具
+    document.getElementById('btnEraser').addEventListener('click', () => {
+        state.currentTool = TOOLS.ERASER;
+        document.getElementById('btnEraser').classList.add('active', 'eraser-active');
+        document.getElementById('btnPencil').classList.remove('active');
+        canvas.style.cursor = 'cell';
+    });
+
+    // 自定义尺寸选择
+    document.getElementById('gridSizeSelect').addEventListener('change', (e) => {
+        const customPanel = document.getElementById('customSizePanel');
+        if (e.target.value === 'custom') {
+            customPanel.style.display = 'block';
+        } else {
+            customPanel.style.display = 'none';
+        }
+    });
+
+    // 图片转换事件
+    document.getElementById('btnImageConvert').addEventListener('click', showImageConvertPanel);
+    document.getElementById('imageInput').addEventListener('change', handleImageUpload);
+    document.getElementById('btnConvert').addEventListener('click', convertImageToPattern);
+    document.getElementById('btnCancelConvert').addEventListener('click', hideImageConvertPanel);
+
+    // 模板库事件
+    document.getElementById('btnTemplates').addEventListener('click', showTemplatePanel);
+    document.getElementById('btnCloseTemplates').addEventListener('click', hideTemplatePanel);
+
+    // 导出PNG
+    document.getElementById('btnExport').addEventListener('click', exportAsPNG);
+
+    // 清除画布
+    document.getElementById('btnClear').addEventListener('click', () => {
+        if (confirm('确定要清除当前图案吗？')) {
+            initGridData();
+            renderCanvas();
+            saveToHistory();
+        }
+    });
+
+    // 清除缓存
+    document.getElementById('btnClearCache').addEventListener('click', () => {
+        if (confirm('确定要清除所有已保存的数据吗？此操作不可恢复。')) {
+            localStorage.removeItem(STORAGE_KEY);
+            alert('缓存已清除');
+        }
+    });
+
+    // 键盘快捷键
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'z') {
+            e.preventDefault();
+            undo();
+        } else if (e.ctrlKey && e.key === 'y') {
+            e.preventDefault();
+            redo();
+        } else if (e.key === 'ArrowLeft') {
+            state.panX += 50;
+            renderCanvas();
+        } else if (e.key === 'ArrowRight') {
+            state.panX -= 50;
+            renderCanvas();
+        } else if (e.key === 'ArrowUp') {
+            state.panY += 50;
+            renderCanvas();
+        } else if (e.key === 'ArrowDown') {
+            state.panY -= 50;
+            renderCanvas();
+        } else if (e.key === ' ') {
+            // 空格键重置平移
+            state.panX = 0;
+            state.panY = 0;
+            renderCanvas();
+        }
+    });
+}
+
+// ============================================
+// 颜色盘渲染
+// ============================================
+
+function renderColorPanel() {
+    const colorList = document.getElementById('colorList');
+    if (!colorList) return;
+    colorList.innerHTML = '';
+
+    // 按系列分组
+    const seriesMap = {};
+    MARD_COLORS.forEach(c => {
+        const series = c.num.match(/^[A-Z]/)?.[0] || 'Other';
+        if (!seriesMap[series]) seriesMap[series] = [];
+        seriesMap[series].push(c);
+    });
+
+    // 渲染每个系列
+    Object.keys(seriesMap).sort().forEach(series => {
+        const seriesDiv = document.createElement('div');
+        seriesDiv.className = 'color-series';
+        seriesDiv.innerHTML = `<h4>${series}系列</h4>`;
+
+        const colorsDiv = document.createElement('div');
+        colorsDiv.className = 'color-grid';
+        colorsDiv.style.display = 'grid';
+        colorsDiv.style.gridTemplateColumns = 'repeat(6, 1fr)';
+        colorsDiv.style.gap = '4px';
+
+        seriesMap[series].forEach(c => {
+            const colorBtn = document.createElement('button');
+            colorBtn.className = 'color-btn';
+            colorBtn.style.backgroundColor = c.color;
+            colorBtn.style.width = '28px';
+            colorBtn.style.height = '28px';
+            colorBtn.style.border = '2px solid transparent';
+            colorBtn.style.borderRadius = '4px';
+            colorBtn.style.cursor = 'pointer';
+            colorBtn.title = `${c.num} - ${c.type}`;
+
+            if (c.type !== 'normal') {
+                colorBtn.style.boxShadow = '0 0 4px ' + c.color;
+            }
+
+            colorBtn.addEventListener('click', () => {
+                state.currentColor = c.color;
+                document.querySelectorAll('.color-btn').forEach(b => {
+                    b.style.border = '2px solid transparent';
+                });
+                colorBtn.style.border = '2px solid white';
+            });
+
+            colorsDiv.appendChild(colorBtn);
+        });
+
+        seriesDiv.appendChild(colorsDiv);
+        colorList.appendChild(seriesDiv);
+    });
+}
+
+// 页面加载完成后初始化
+document.addEventListener('DOMContentLoaded', () => {
+    initCanvas();
+    loadFromStorage(); // 尝试从 LocalStorage 加载数据
+    initEventListeners();
+    renderColorPanel();
+});
+</script>
+</html>

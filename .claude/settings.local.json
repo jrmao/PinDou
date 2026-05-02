@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"D:\\\\其他项目\\\\PinDou\")",
+      "Bash(node \"C:\\\\Users\\\\Lenovo\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\5.0.7\\\\skills\\\\brainstorming\\\\scripts\\\\start-server.sh\" --project-dir \"D:/其他项目/PinDou\")",
+      "WebFetch(domain:www.pindou.online)",
+      "mcp__plugin_everything-claude-code_exa__web_search_exa",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(set http_proxy=http://127.0.0.1:7897)",
+      "Bash(set https_proxy=http://127.0.0.1:7897)",
+      "Bash(node --check \"D:\\\\其他项目\\\\PinDou\\\\index.html\")",
+      "Bash(node *)",
+      "WebFetch(domain:blog.csdn.net)"
+    ]
+  }
+}
