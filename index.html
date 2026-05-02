@@ -1341,19 +1341,27 @@ function convertImageToPattern() {
 }
 
 // 色块融合和边界增强算法（针对小尺寸图像）
-function enhanceColorBlocks() {
+/**
+ * 色块增强处理
+ * @param {number} denoiseLevel - 去噪强度 (0-10)
+ * @param {number} edgeSharpness - 边缘锐度 (0-10)
+ */
+function enhanceColorBlocks(denoiseLevel = 3, edgeSharpness = 5) {
     const width = state.canvasWidth;
     const height = state.canvasHeight;
-    const threshold = 15; // 颜色差异阈值，低于此值认为是相近颜色
 
-    // 创建临时网格用于区域生长
+    // 根据去噪强度计算小区域阈值
+    // denoiseLevel 0-10: minRegionSize 从 2 到 8
+    const minRegionSize = Math.max(2, Math.floor(denoiseLevel * 0.6));
+
+    // 颜色差异阈值
+    const threshold = 15;
+
     const tempGrid = state.gridData.map(row => [...row]);
     const visited = Array.from({ length: height }, () => Array(width).fill(false));
 
-    // 方向：上下左右
     const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
 
-    // 计算两个颜色的差异
     function colorDistance(c1, c2) {
         if (!c1 || !c2) return Infinity;
         const rgb1 = hexToRgb(c1);
@@ -1365,7 +1373,6 @@ function enhanceColorBlocks() {
         );
     }
 
-    // 区域生长：将相近颜色融合
     function floodFillMerge(startX, startY, targetColor) {
         const queue = [[startX, startY]];
         const region = [];
@@ -1395,8 +1402,8 @@ function enhanceColorBlocks() {
             const currentColor = tempGrid[y][x];
             const region = floodFillMerge(x, y, currentColor);
 
-            // 如果区域太小（噪声点），尝试合并到周围的主颜色
-            if (region.length <= 3) {
+            // 使用参数化的小区域阈值
+            if (region.length <= minRegionSize) {
                 // 找到周围的主要颜色
                 const neighborColors = {};
                 for (const [rx, ry] of region) {
@@ -1411,7 +1418,6 @@ function enhanceColorBlocks() {
                     }
                 }
 
-                // 找到最多的邻居颜色
                 let maxCount = 0;
                 let mainColor = null;
                 for (const [color, count] of Object.entries(neighborColors)) {
@@ -1421,31 +1427,12 @@ function enhanceColorBlocks() {
                     }
                 }
 
-                // 如果找到主颜色且差异不大，则合并
-                if (mainColor && colorDistance(currentColor, mainColor) < threshold * 2) {
+                // 只有在边缘区域且差异不大时才合并
+                if (mainColor &&
+                    colorDistance(currentColor, mainColor) < threshold * 2 &&
+                    isEdgeRegion(region[0][0], region[0][1], width, height, 2)) {
                     for (const [rx, ry] of region) {
                         state.gridData[ry][rx] = mainColor;
-                    }
-                }
-            }
-        }
-    }
-
-    // 边界增强：强化不同颜色之间的边界
-    const edgeGrid = Array.from({ length: height }, () => Array(width).fill(false));
-
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            const currentColor = state.gridData[y][x];
-
-            // 检查上下左右是否有不同颜色
-            for (const [dx, dy] of directions) {
-                const nx = x + dx, ny = y + dy;
-                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                    const neighborColor = state.gridData[ny][nx];
-                    if (currentColor !== neighborColor) {
-                        edgeGrid[y][x] = true;
-                        break;
                     }
                 }
             }
