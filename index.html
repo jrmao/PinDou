@@ -1,8 +1,9 @@
 <!--
 /**
  * PinDou - 拼豆图案设计工具
- * 版本：v1.0.1
+ * 版本：v1.0.2
  * 更新日志：
+ *   2026-05-03 v1.0.2 - 状态管理和常量配置
  *   2026-05-03 v1.0.1 - HTML结构和基础样式
  *   2026-05-02 v1.0.0 - 初始版本，像素画编辑器/图片转图案/模板库
  */
@@ -135,4 +136,88 @@
         </div>
     </div>
 </body>
+<script>
+'use strict';
+
+// ============================================
+// 常量配置
+// ============================================
+
+// TODO: Mard 291 色数据将在 Task 5 中填充
+const COLORS = {};
+
+// 工具定义
+const TOOLS = {
+    PENCIL: 'pencil',
+    ERASER: 'eraser',
+    FILL: 'fill',
+    RECT: 'rect',
+    LINE: 'line'
+};
+
+// 画布限制
+const CANVAS_MIN_SIZE = 10;
+const CANVAS_MAX_SIZE = 200;
+const DEFAULT_CANVAS_SIZE = 29;
+
+// ============================================
+// 状态管理
+// ============================================
+
+const state = {
+    canvasWidth: DEFAULT_CANVAS_SIZE,
+    canvasHeight: DEFAULT_CANVAS_SIZE,
+    currentTool: TOOLS.PENCIL,
+    currentColor: '#FF0000',
+    zoom: 1,
+    isDrawing: false,
+    startX: 0,
+    startY: 0,
+    gridData: null,  // 二维数组存储像素颜色
+    history: [],     // 撤销/重做历史
+    historyIndex: -1
+};
+
+// ============================================
+// 工具函数
+// ============================================
+
+function deepCopy(obj) {
+    return JSON.parse(JSON.stringify(obj));
+}
+
+function saveToHistory() {
+    // 移除当前位置之后的历史
+    state.history = state.history.slice(0, state.historyIndex + 1);
+    // 保存当前状态
+    state.history.push(deepCopy(state.gridData));
+    state.historyIndex++;
+    // 限制历史记录数量
+    if (state.history.length > 50) {
+        state.history.shift();
+        state.historyIndex--;
+    }
+}
+
+function undo() {
+    if (state.historyIndex > 0) {
+        state.historyIndex--;
+        state.gridData = deepCopy(state.history[state.historyIndex]);
+        renderCanvas();
+    }
+}
+
+function redo() {
+    if (state.historyIndex < state.history.length - 1) {
+        state.historyIndex++;
+        state.gridData = deepCopy(state.history[state.historyIndex]);
+        renderCanvas();
+    }
+}
+
+// renderCanvas 占位符，后续 Task 4 实现
+function renderCanvas() {
+    // TODO: 实现画布渲染
+}
+</script>
 </html>
