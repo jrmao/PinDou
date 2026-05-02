@@ -1318,6 +1318,7 @@ function updateImagePreview() {
     tempCanvas.height = previewSize;
     const tempCtx = tempCanvas.getContext('2d');
 
+    // 绘制缩略图
     tempCtx.drawImage(uploadedImage, 0, 0, previewSize, previewSize);
     const imageData = tempCtx.getImageData(0, 0, previewSize, previewSize);
 
@@ -1336,17 +1337,18 @@ function updateImagePreview() {
         }
     }
 
-    if (previewSize <= 100) {
-        const originalGridData = state.gridData;
-        state.gridData = previewGrid;
-        enhanceColorBlocks(denoiseLevel, edgeSharpness);
-        previewGrid.length = 0;
-        for (let y = 0; y < previewSize; y++) {
-            previewGrid[y] = [...state.gridData[y]];
-        }
-        state.gridData = originalGridData;
-    }
+    // 临时修改 state 以便 enhanceColorBlocks 处理预览尺寸
+    const originalWidth = state.canvasWidth;
+    const originalHeight = state.canvasHeight;
+    const originalGridData = state.gridData;
+    state.canvasWidth = previewSize;
+    state.canvasHeight = previewSize;
+    state.gridData = previewGrid;
 
+    // 应用色块增强
+    enhanceColorBlocks(denoiseLevel, edgeSharpness);
+
+    // 渲染到预览 canvas
     const previewCanvas = document.createElement('canvas');
     previewCanvas.width = previewSize;
     previewCanvas.height = previewSize;
@@ -1354,10 +1356,15 @@ function updateImagePreview() {
 
     for (let y = 0; y < previewSize; y++) {
         for (let x = 0; x < previewSize; x++) {
-            previewCtx.fillStyle = previewGrid[y][x];
+            previewCtx.fillStyle = state.gridData[y][x];
             previewCtx.fillRect(x, y, 1, 1);
         }
     }
+
+    // 恢复原始 state
+    state.canvasWidth = originalWidth;
+    state.canvasHeight = originalHeight;
+    state.gridData = originalGridData;
 
     const previewImg = document.getElementById('previewImg');
     if (previewImg) {
