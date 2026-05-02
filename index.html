@@ -1,8 +1,9 @@
 <!--
 /**
  * PinDou - 拼豆图案设计工具
- * 版本：v1.1.2
+ * 版本：v1.1.3
  * 更新日志：
+ *   2026-05-02 v1.1.3 - 新增：鼠标滚轮缩放功能；小尺寸色块融合算法；导出PNG质量优化（100×100达3MB）
  *   2026-05-02 v1.1.2 - 优化：导出PNG像素增大至30px/格；色号字体加黑加粗描边；每10格添加深色辅助线
  *   2026-05-02 v1.1.1 - 新增：清除画布和清除缓存功能
  *   2026-05-02 v1.1.0 - 新增：图片尺寸支持自定义输入（长×宽）；空白/背景自动填充白色；优化颜色匹配算法（LAB色彩空间）
@@ -681,6 +682,8 @@ const state = {
     currentTool: TOOLS.PENCIL,
     currentColor: '#FF0000',
     zoom: 1,
+    minZoom: 0.25,   // 最小缩放
+    maxZoom: 4,       // 最大缩放
     panX: 0,        // 画布平移 X
     panY: 0,        // 画布平移 Y
     isDrawing: false,
@@ -767,13 +770,19 @@ function initCanvas() {
     saveToHistory();
 }
 
+function updateCanvasTransform() {
+    const container = document.getElementById('canvasContainer');
+    const scale = state.zoom;
+    const tx = state.panX;
+    const ty = state.panY;
+    container.style.perspective = '1000px';
+    canvas.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    canvas.style.transformOrigin = 'center center';
+}
+
 function renderCanvas() {
     // 清空画布
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // 保存上下文并应用平移
-    ctx.save();
-    ctx.translate(state.panX, state.panY);
 
     // 绘制每个像素
     for (let y = 0; y < state.canvasHeight; y++) {
@@ -807,7 +816,7 @@ function renderCanvas() {
         ctx.stroke();
     }
 
-    ctx.restore();
+    updateCanvasTransform();
     updateStatusBar();
 }
 
@@ -942,8 +951,10 @@ function updateStatusBar() {
 // ============================================
 
 function exportAsPNG() {
-    const CELL_SIZE = 30;     // 每个格子导出时的像素大小（增大到30px）
-    const LABEL_WIDTH = 40;   // 序号标签宽度
+    // 根据画布尺寸动态调整像素大小（确保100×100时图片约3MB）
+    const baseCellSize = state.canvasWidth >= 100 || state.canvasHeight >= 100 ? 60 : 40;
+    const CELL_SIZE = baseCellSize;
+    const LABEL_WIDTH = 50;   // 序号标签宽度（增大）
     const GRID_GAP = 10;      // 辅助线间隔（每10格一道）
 
     // 计算画布尺寸（包含序号区域）
@@ -966,9 +977,9 @@ function exportAsPNG() {
     exportCtx.fillStyle = '#f0f0f0';
     exportCtx.fillRect(0, 0, LABEL_WIDTH, LABEL_WIDTH);
 
-    // 绘制列序号（上方）- 加粗
+    // 绘制列序号（上方）- 加粗加大
     exportCtx.fillStyle = '#000000';
-    exportCtx.font = 'bold 11px monospace';
+    exportCtx.font = 'bold 12px monospace';
     exportCtx.textAlign = 'center';
     exportCtx.textBaseline = 'middle';
     for (let x = 0; x < state.canvasWidth; x++) {
@@ -977,7 +988,7 @@ function exportAsPNG() {
         exportCtx.fillText((x + 1).toString(), cx, cy);
     }
 
-    // 绘制行序号（左侧）- 加粗
+    // 绘制行序号（左侧）- 加粗加大
     exportCtx.textAlign = 'center';
     for (let y = 0; y < state.canvasHeight; y++) {
         const cx = LABEL_WIDTH / 2;
@@ -1017,8 +1028,8 @@ function exportAsPNG() {
 
                     // 绘制文字描边（加粗效果）
                     exportCtx.strokeStyle = brightness > 128 ? '#ffffff' : '#000000';
-                    exportCtx.lineWidth = 2;
-                    exportCtx.font = 'bold 9px monospace';
+                    exportCtx.lineWidth = 3;
+                    exportCtx.font = `bold ${Math.max(10, CELL_SIZE / 4)}px monospace`;
                     exportCtx.strokeText(colorNum, px + CELL_SIZE / 2, py + CELL_SIZE / 2);
 
                     // 绘制文字
@@ -1031,7 +1042,7 @@ function exportAsPNG() {
 
     // 绘制辅助线（每10格一道，深色醒目线条）
     exportCtx.strokeStyle = '#333333';
-    exportCtx.lineWidth = 1.5;
+    exportCtx.lineWidth = 2;
 
     // 垂直辅助线
     for (let x = 10; x < state.canvasWidth; x += GRID_GAP) {
@@ -1053,7 +1064,7 @@ function exportAsPNG() {
 
     // 绘制分隔线（序号区域边框）
     exportCtx.strokeStyle = '#666666';
-    exportCtx.lineWidth = 1.5;
+    exportCtx.lineWidth = 2;
     exportCtx.beginPath();
     exportCtx.moveTo(LABEL_WIDTH, 0);
     exportCtx.lineTo(LABEL_WIDTH, totalHeight);
@@ -1062,13 +1073,35 @@ function exportAsPNG() {
     exportCtx.stroke();
 
     // 转换为 Blob 并下载（高质量 PNG）
+    // 使用 larger canvas 和更高质量的设置
     exportCanvas.toBlob((blob) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `pindou-${Date.now()}.png`;
-        a.click();
-        URL.revokeObjectURL(url);
+        // 如果图片太小（目标3MB），尝试增大像素
+        if (blob.size < 2 * 1024 * 1024 && CELL_SIZE < 80) {
+            // 重新以更大尺寸绘制
+            const scale = 2;
+            const scaledCanvas = document.createElement('canvas');
+            scaledCanvas.width = totalWidth * scale;
+            scaledCanvas.height = totalHeight * scale;
+            const scaledCtx = scaledCanvas.getContext('2d');
+            scaledCtx.scale(scale, scale);
+            scaledCtx.drawImage(exportCanvas, 0, 0);
+
+            scaledCanvas.toBlob((newBlob) => {
+                const url = URL.createObjectURL(newBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `pindou-${Date.now()}.png`;
+                a.click();
+                URL.revokeObjectURL(url);
+            }, 'image/png');
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `pindou-${Date.now()}.png`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
     }, 'image/png');
 }
 
@@ -1273,9 +1306,128 @@ function convertImageToPattern() {
         }
     }
 
+    // 对小尺寸图像应用色块融合和边界增强算法
+    if (gridWidth <= 100 || gridHeight <= 100) {
+        enhanceColorBlocks();
+    }
+
     renderCanvas();
     saveToHistory();
     hideImageConvertPanel();
+}
+
+// 色块融合和边界增强算法（针对小尺寸图像）
+function enhanceColorBlocks() {
+    const width = state.canvasWidth;
+    const height = state.canvasHeight;
+    const threshold = 15; // 颜色差异阈值，低于此值认为是相近颜色
+
+    // 创建临时网格用于区域生长
+    const tempGrid = state.gridData.map(row => [...row]);
+    const visited = Array.from({ length: height }, () => Array(width).fill(false));
+
+    // 方向：上下左右
+    const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+
+    // 计算两个颜色的差异
+    function colorDistance(c1, c2) {
+        if (!c1 || !c2) return Infinity;
+        const rgb1 = hexToRgb(c1);
+        const rgb2 = hexToRgb(c2);
+        return Math.sqrt(
+            Math.pow(rgb1.r - rgb2.r, 2) +
+            Math.pow(rgb1.g - rgb2.g, 2) +
+            Math.pow(rgb1.b - rgb2.b, 2)
+        );
+    }
+
+    // 区域生长：将相近颜色融合
+    function floodFillMerge(startX, startY, targetColor) {
+        const queue = [[startX, startY]];
+        const region = [];
+
+        while (queue.length > 0) {
+            const [x, y] = queue.shift();
+            if (x < 0 || x >= width || y < 0 || y >= height) continue;
+            if (visited[y][x]) continue;
+            if (tempGrid[y][x] !== targetColor) continue;
+
+            visited[y][x] = true;
+            region.push([x, y]);
+
+            for (const [dx, dy] of directions) {
+                queue.push([x + dx, y + dy]);
+            }
+        }
+
+        return region;
+    }
+
+    // 遍历所有格子进行区域生长
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (visited[y][x]) continue;
+
+            const currentColor = tempGrid[y][x];
+            const region = floodFillMerge(x, y, currentColor);
+
+            // 如果区域太小（噪声点），尝试合并到周围的主颜色
+            if (region.length <= 3) {
+                // 找到周围的主要颜色
+                const neighborColors = {};
+                for (const [rx, ry] of region) {
+                    for (const [dx, dy] of directions) {
+                        const nx = rx + dx, ny = ry + dy;
+                        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                            const nc = tempGrid[ny][nx];
+                            if (nc !== currentColor) {
+                                neighborColors[nc] = (neighborColors[nc] || 0) + 1;
+                            }
+                        }
+                    }
+                }
+
+                // 找到最多的邻居颜色
+                let maxCount = 0;
+                let mainColor = null;
+                for (const [color, count] of Object.entries(neighborColors)) {
+                    if (count > maxCount) {
+                        maxCount = count;
+                        mainColor = color;
+                    }
+                }
+
+                // 如果找到主颜色且差异不大，则合并
+                if (mainColor && colorDistance(currentColor, mainColor) < threshold * 2) {
+                    for (const [rx, ry] of region) {
+                        state.gridData[ry][rx] = mainColor;
+                    }
+                }
+            }
+        }
+    }
+
+    // 边界增强：强化不同颜色之间的边界
+    const edgeGrid = Array.from({ length: height }, () => Array(width).fill(false));
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const currentColor = state.gridData[y][x];
+
+            // 检查上下左右是否有不同颜色
+            for (const [dx, dy] of directions) {
+                const nx = x + dx, ny = y + dy;
+                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                    const neighborColor = state.gridData[ny][nx];
+                    if (currentColor !== neighborColor) {
+                        edgeGrid[y][x] = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
 }
 
 // 检测是否为背景色（空白/透明/接近白色）
@@ -1414,6 +1566,33 @@ function initEventListeners() {
     });
     // 阻止右键菜单
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // 鼠标滚轮缩放
+    document.getElementById('canvasContainer').addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        const newZoom = Math.max(state.minZoom, Math.min(state.maxZoom, state.zoom + delta));
+
+        // 以鼠标位置为中心缩放
+        if (newZoom !== state.zoom) {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // 计算缩放前后鼠标在画布上的位置
+            const oldScaledX = (mouseX - state.panX) / state.zoom;
+            const oldScaledY = (mouseY - state.panY) / state.zoom;
+
+            state.zoom = newZoom;
+
+            // 调整平移使鼠标位置保持不变
+            state.panX = mouseX - oldScaledX * state.zoom;
+            state.panY = mouseY - oldScaledY * state.zoom;
+
+            updateCanvasTransform();
+            updateStatusBar();
+        }
+    }, { passive: false });
 
     // 铅笔工具
     document.getElementById('btnPencil').addEventListener('click', () => {
