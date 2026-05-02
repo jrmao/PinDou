@@ -1,8 +1,9 @@
 <!--
 /**
  * PinDou - 拼豆图案设计工具
- * 版本：v1.0.2
+ * 版本：v1.0.2-fix
  * 更新日志：
+ *   2026-05-03 v1.0.2-fix - 修复状态管理中的安全隐患
  *   2026-05-03 v1.0.2 - 状态管理和常量配置
  *   2026-05-03 v1.0.1 - HTML结构和基础样式
  *   2026-05-02 v1.0.0 - 初始版本，像素画编辑器/图片转图案/模板库
@@ -178,12 +179,26 @@ const state = {
     historyIndex: -1
 };
 
+// 初始化 gridData
+initGridData();
+
 // ============================================
 // 工具函数
 // ============================================
 
 function deepCopy(obj) {
-    return JSON.parse(JSON.stringify(obj));
+    return structuredClone(obj);
+}
+
+function initGridData() {
+    state.gridData = [];
+    for (let y = 0; y < state.canvasHeight; y++) {
+        const row = [];
+        for (let x = 0; x < state.canvasWidth; x++) {
+            row.push(null);
+        }
+        state.gridData.push(row);
+    }
 }
 
 function saveToHistory() {
