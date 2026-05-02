@@ -1,8 +1,10 @@
 <!--
 /**
  * PinDou - 拼豆图案设计工具
- * 版本：v1.0.8
+ * 版本：v1.1.0
  * 更新日志：
+ *   2026-05-02 v1.1.0 - 新增：图片尺寸支持自定义输入（长×宽）；空白/背景自动填充白色；优化颜色匹配算法（LAB色彩空间）
+ *   2026-05-02 v1.0.9 - 新增：铅笔/橡皮擦工具切换；画布平移功能；导出PNG增加序号/色号标注
  *   2026-05-03 v1.0.8 - LocalStorage 自动保存与加载
  *   2026-05-03 v1.0.7 - 导出PNG功能
  *   2026-05-03 v1.0.6 - 模板库功能
@@ -149,6 +151,38 @@
         .color-btn.selected {
             border: 2px solid white;
         }
+
+        /* 工具按钮组 */
+        .tool-group {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .tool-btn {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+            background: #0f3460;
+            color: #eee;
+        }
+
+        .tool-btn:hover {
+            background: #1a4a80;
+        }
+
+        .tool-btn.active {
+            background: #e94560;
+            color: white;
+        }
+
+        .tool-btn.eraser-active {
+            background: #ff6b6b;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -158,6 +192,10 @@
             <button id="btnEditor" class="active" title="像素画编辑器">编辑器</button>
             <button id="btnImageConvert" title="图片转图案">图片转图案</button>
             <button id="btnTemplates" title="图案模板库">模板库</button>
+            <div class="tool-group" style="margin-left:16px; border-left:1px solid #0f3460; padding-left:16px;">
+                <button id="btnPencil" class="tool-btn active" title="铅笔工具">铅笔</button>
+                <button id="btnEraser" class="tool-btn" title="橡皮擦（擦除颜色）">橡皮擦</button>
+            </div>
             <div style="flex:1"></div>
             <button id="btnExport" title="导出PNG">导出PNG</button>
         </div>
@@ -182,10 +220,15 @@
                         <label>网格尺寸: <select id="gridSizeSelect">
                             <option value="8">8×8</option>
                             <option value="16">16×16</option>
-                            <option value="29" selected>29×29</option>
+                            <option value="29">29×29</option>
                             <option value="50">50×50</option>
                             <option value="100">100×100</option>
+                            <option value="custom">自定义</option>
                         </select></label>
+                    </div>
+                    <div id="customSizePanel" style="margin:16px 0; display:none;">
+                        <label>宽度: <input type="number" id="customWidth" min="8" max="200" value="50" style="width:60px;" /> ×
+                        高度: <input type="number" id="customHeight" min="8" max="200" value="50" style="width:60px;" /></label>
                     </div>
                     <div id="imagePreview" style="margin:16px 0; max-width:300px; max-height:300px;">
                         <img id="previewImg" style="max-width:100%; max-height:100%;" />
@@ -634,9 +677,14 @@ const state = {
     currentTool: TOOLS.PENCIL,
     currentColor: '#FF0000',
     zoom: 1,
+    panX: 0,        // 画布平移 X
+    panY: 0,        // 画布平移 Y
     isDrawing: false,
+    isPanning: false, // 是否在平移中
     startX: 0,
     startY: 0,
+    panStartX: 0,    // 平移起始 X
+    panStartY: 0,    // 平移起始 Y
     gridData: null,  // 二维数组存储像素颜色
     history: [],     // 撤销/重做历史
     historyIndex: -1
@@ -719,6 +767,10 @@ function renderCanvas() {
     // 清空画布
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // 保存上下文并应用平移
+    ctx.save();
+    ctx.translate(state.panX, state.panY);
+
     // 绘制每个像素
     for (let y = 0; y < state.canvasHeight; y++) {
         for (let x = 0; x < state.canvasWidth; x++) {
@@ -751,15 +803,25 @@ function renderCanvas() {
         ctx.stroke();
     }
 
+    ctx.restore();
     updateStatusBar();
 }
 
 // 事件处理
 function handleCanvasMouseDown(e) {
+    // 中键或右键按下时开始平移
+    if (e.button === 1 || e.button === 2) {
+        state.isPanning = true;
+        state.panStartX = e.clientX - state.panX;
+        state.panStartY = e.clientY - state.panY;
+        e.preventDefault();
+        return;
+    }
+
     state.isDrawing = true;
     const rect = canvas.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / PIXEL_SIZE);
-    const y = Math.floor((e.clientY - rect.top) / PIXEL_SIZE);
+    const x = Math.floor((e.clientX - rect.left - state.panX) / PIXEL_SIZE);
+    const y = Math.floor((e.clientY - rect.top - state.panY) / PIXEL_SIZE);
     state.startX = x;
     state.startY = y;
 
@@ -771,11 +833,19 @@ function handleCanvasMouseDown(e) {
 }
 
 function handleCanvasMouseMove(e) {
+    // 平移模式
+    if (state.isPanning) {
+        state.panX = e.clientX - state.panStartX;
+        state.panY = e.clientY - state.panStartY;
+        renderCanvas();
+        return;
+    }
+
     if (!state.isDrawing) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / PIXEL_SIZE);
-    const y = Math.floor((e.clientY - rect.top) / PIXEL_SIZE);
+    const x = Math.floor((e.clientX - rect.left - state.panX) / PIXEL_SIZE);
+    const y = Math.floor((e.clientY - rect.top - state.panY) / PIXEL_SIZE);
 
     if (state.currentTool === TOOLS.PENCIL) {
         setPixel(x, y, state.currentColor);
@@ -785,11 +855,15 @@ function handleCanvasMouseMove(e) {
 }
 
 function handleCanvasMouseUp(e) {
+    if (state.isPanning) {
+        state.isPanning = false;
+        return;
+    }
     if (state.isDrawing && state.currentTool !== TOOLS.PENCIL && state.currentTool !== TOOLS.ERASER && state.currentTool !== TOOLS.FILL) {
         // 矩形和直线工具
         const rect = canvas.getBoundingClientRect();
-        const x = Math.floor((e.clientX - rect.left) / PIXEL_SIZE);
-        const y = Math.floor((e.clientY - rect.top) / PIXEL_SIZE);
+        const x = Math.floor((e.clientX - rect.left - state.panX) / PIXEL_SIZE);
+        const y = Math.floor((e.clientY - rect.top - state.panY) / PIXEL_SIZE);
         drawShape(state.startX, state.startY, x, y, state.currentColor);
     }
     state.isDrawing = false;
@@ -864,22 +938,96 @@ function updateStatusBar() {
 // ============================================
 
 function exportAsPNG() {
+    const CELL_SIZE = 20;    // 每个格子导出时的像素大小
+    const LABEL_WIDTH = 30;  // 序号标签宽度
+    const FONT_SIZE = 10;     // 序号字体大小
+
+    // 计算画布尺寸（包含序号区域）
+    const patternWidth = state.canvasWidth * CELL_SIZE;
+    const patternHeight = state.canvasHeight * CELL_SIZE;
+    const totalWidth = patternWidth + LABEL_WIDTH;
+    const totalHeight = patternHeight + LABEL_WIDTH;
+
     // 创建导出用的临时 canvas
     const exportCanvas = document.createElement('canvas');
-    exportCanvas.width = state.canvasWidth;
-    exportCanvas.height = state.canvasHeight;
+    exportCanvas.width = totalWidth;
+    exportCanvas.height = totalHeight;
     const exportCtx = exportCanvas.getContext('2d');
 
-    // 绘制像素（1:1 比例）
+    // 白色背景
+    exportCtx.fillStyle = '#ffffff';
+    exportCtx.fillRect(0, 0, totalWidth, totalHeight);
+
+    // 绘制序号背景
+    exportCtx.fillStyle = '#f5f5f5';
+    exportCtx.fillRect(0, 0, LABEL_WIDTH, LABEL_WIDTH);
+
+    // 绘制列序号（上方）
+    exportCtx.fillStyle = '#333333';
+    exportCtx.font = `${FONT_SIZE}px monospace`;
+    exportCtx.textAlign = 'center';
+    exportCtx.textBaseline = 'middle';
+    for (let x = 0; x < state.canvasWidth; x++) {
+        const cx = LABEL_WIDTH + x * CELL_SIZE + CELL_SIZE / 2;
+        const cy = LABEL_WIDTH / 2;
+        exportCtx.fillText((x + 1).toString(), cx, cy);
+    }
+
+    // 绘制行序号（左侧）
+    exportCtx.textAlign = 'center';
+    exportCtx.textBaseline = 'middle';
+    for (let y = 0; y < state.canvasHeight; y++) {
+        const cx = LABEL_WIDTH / 2;
+        const cy = LABEL_WIDTH + y * CELL_SIZE + CELL_SIZE / 2;
+        exportCtx.fillText((y + 1).toString(), cx, cy);
+    }
+
+    // 绘制像素格子
     for (let y = 0; y < state.canvasHeight; y++) {
         for (let x = 0; x < state.canvasWidth; x++) {
             const color = state.gridData[y][x];
+            const px = LABEL_WIDTH + x * CELL_SIZE;
+            const py = LABEL_WIDTH + y * CELL_SIZE;
+
             if (color) {
                 exportCtx.fillStyle = color;
-                exportCtx.fillRect(x, y, 1, 1);
+                exportCtx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+            }
+
+            // 绘制格子边框
+            exportCtx.strokeStyle = '#cccccc';
+            exportCtx.lineWidth = 0.5;
+            exportCtx.strokeRect(px, py, CELL_SIZE, CELL_SIZE);
+
+            // 在格子中心显示色号（如果格子足够大）
+            if (CELL_SIZE >= 15) {
+                exportCtx.fillStyle = '#333333';
+                exportCtx.font = `${Math.max(7, CELL_SIZE / 4)}px monospace`;
+                exportCtx.textAlign = 'center';
+                exportCtx.textBaseline = 'middle';
+
+                // 找到对应的色号
+                const colorNum = findColorNumber(color);
+                if (colorNum) {
+                    // 根据背景颜色决定文字颜色
+                    const rgb = hexToRgb(color);
+                    const brightness = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+                    exportCtx.fillStyle = brightness > 128 ? '#333333' : '#ffffff';
+                    exportCtx.fillText(colorNum, px + CELL_SIZE / 2, py + CELL_SIZE / 2);
+                }
             }
         }
     }
+
+    // 绘制分隔线
+    exportCtx.strokeStyle = '#999999';
+    exportCtx.lineWidth = 1;
+    exportCtx.beginPath();
+    exportCtx.moveTo(LABEL_WIDTH, 0);
+    exportCtx.lineTo(LABEL_WIDTH, totalHeight);
+    exportCtx.moveTo(0, LABEL_WIDTH);
+    exportCtx.lineTo(totalWidth, LABEL_WIDTH);
+    exportCtx.stroke();
 
     // 转换为 Blob 并下载
     exportCanvas.toBlob((blob) => {
@@ -890,6 +1038,17 @@ function exportAsPNG() {
         a.click();
         URL.revokeObjectURL(url);
     }, 'image/png');
+}
+
+// 根据颜色值查找色号
+function findColorNumber(color) {
+    if (!color) return null;
+    for (const c of MARD_COLORS) {
+        if (c.color.toLowerCase() === color.toLowerCase()) {
+            return c.num;
+        }
+    }
+    return null;
 }
 
 // ============================================
@@ -1028,37 +1187,57 @@ function handleImageUpload(e) {
 function convertImageToPattern() {
     if (!uploadedImage) return;
 
-    const gridSize = parseInt(document.getElementById('gridSizeSelect').value);
+    let gridWidth, gridHeight;
+
+    // 获取尺寸设置
+    const sizeSelect = document.getElementById('gridSizeSelect').value;
+    if (sizeSelect === 'custom') {
+        gridWidth = parseInt(document.getElementById('customWidth').value) || 50;
+        gridHeight = parseInt(document.getElementById('customHeight').value) || 50;
+        // 限制范围
+        gridWidth = Math.max(8, Math.min(200, gridWidth));
+        gridHeight = Math.max(8, Math.min(200, gridHeight));
+    } else {
+        gridWidth = gridHeight = parseInt(sizeSelect);
+    }
 
     // 创建临时 canvas 来采样图片
     const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = gridSize;
-    tempCanvas.height = gridSize;
+    tempCanvas.width = gridWidth;
+    tempCanvas.height = gridHeight;
     const tempCtx = tempCanvas.getContext('2d');
 
-    // 绘制并缩放图片
-    tempCtx.drawImage(uploadedImage, 0, 0, gridSize, gridSize);
+    // 绘制并缩放图片（保持宽高比）
+    tempCtx.drawImage(uploadedImage, 0, 0, gridWidth, gridHeight);
 
     // 获取像素数据
-    const imageData = tempCtx.getImageData(0, 0, gridSize, gridSize);
+    const imageData = tempCtx.getImageData(0, 0, gridWidth, gridHeight);
 
     // 调整画布尺寸
-    state.canvasWidth = gridSize;
-    state.canvasHeight = gridSize;
-    canvas.width = gridSize * PIXEL_SIZE;
-    canvas.height = gridSize * PIXEL_SIZE;
+    state.canvasWidth = gridWidth;
+    state.canvasHeight = gridHeight;
+    canvas.width = gridWidth * PIXEL_SIZE;
+    canvas.height = gridHeight * PIXEL_SIZE;
     initGridData();
 
     // 转换每个像素
-    for (let y = 0; y < gridSize; y++) {
-        for (let x = 0; x < gridSize; x++) {
-            const idx = (y * gridSize + x) * 4;
+    for (let y = 0; y < gridHeight; y++) {
+        for (let x = 0; x < gridWidth; x++) {
+            const idx = (y * gridWidth + x) * 4;
             const r = imageData.data[idx];
             const g = imageData.data[idx + 1];
             const b = imageData.data[idx + 2];
+            const a = imageData.data[idx + 3];
 
-            const matchedColor = findClosestColor(r, g, b);
-            state.gridData[y][x] = matchedColor;
+            // 检测是否为空白/透明/接近白色的背景
+            const isEmpty = isBackgroundColor(r, g, b, a);
+            if (isEmpty) {
+                // 背景用白色
+                state.gridData[y][x] = '#FFFFFF';
+            } else {
+                const matchedColor = findClosestColorLab(r, g, b);
+                state.gridData[y][x] = matchedColor;
+            }
         }
     }
 
@@ -1067,17 +1246,113 @@ function convertImageToPattern() {
     hideImageConvertPanel();
 }
 
-// 最近邻颜色匹配
+// 检测是否为背景色（空白/透明/接近白色）
+function isBackgroundColor(r, g, b, a) {
+    // 透明像素
+    if (a < 128) return true;
+
+    // 接近白色的被认为是背景
+    const brightness = (r + g + b) / 3;
+    const saturation = Math.max(r, g, b) - Math.min(r, g, b);
+    if (brightness > 240 && saturation < 20) return true;
+
+    return false;
+}
+
+// ============================================
+// 颜色匹配算法（优化版：使用 LAB 色彩空间）
+// ============================================
+
+// RGB 转 LAB（通过 XYZ）
+function rgbToLab(r, g, b) {
+    // RGB 转 normalized RGB (0-1)
+    let rr = r / 255, gg = g / 255, bb = b / 255;
+
+    // Gamma 校正
+    rr = rr > 0.04045 ? Math.pow((rr + 0.055) / 1.055, 2.4) : rr / 12.92;
+    gg = gg > 0.04045 ? Math.pow((gg + 0.055) / 1.055, 2.4) : gg / 12.92;
+    bb = bb > 0.04045 ? Math.pow((bb + 0.055) / 1.055, 2.4) : bb / 12.92;
+
+    // 转 XYZ
+    let x = (rr * 0.4124564 + gg * 0.3575761 + bb * 0.1804375) / 0.95047;
+    let y = (rr * 0.2126729 + gg * 0.7151522 + bb * 0.0721750);
+    let z = (rr * 0.0193339 + gg * 0.1191920 + bb * 0.9503041) / 1.08883;
+
+    // XYZ 转 LAB
+    x = x > 0.008856 ? Math.pow(x, 1/3) : (7.787 * x) + 16/116;
+    y = y > 0.008856 ? Math.pow(y, 1/3) : (7.787 * y) + 16/116;
+    z = z > 0.008856 ? Math.pow(z, 1/3) : (7.787 * z) + 16/116;
+
+    const L = (116 * y) - 16;
+    const a = 500 * (x - y);
+    const bLab = 200 * (y - z);
+
+    return { L, a, b: bLab };
+}
+
+// CIEDE2000 色差公式（简化版，返回更准确的颜色差异感知度量）
+function ciede2000(rgb1, rgb2) {
+    const lab1 = rgbToLab(rgb1.r, rgb1.g, rgb1.b);
+    const lab2 = rgbToLab(rgb2.r, rgb2.g, rgb2.b);
+
+    // 计算 Delta L
+    const deltaL = lab2.L - lab1.L;
+
+    // 计算 C (chroma)
+    const C1 = Math.sqrt(lab1.a * lab1.a + lab1.b * lab1.b);
+    const C2 = Math.sqrt(lab2.a * lab2.a + lab2.b * lab2.b);
+    const deltaC = C2 - C1;
+
+    // 计算 Delta H
+    const deltaH = Math.sqrt(
+        Math.pow(lab2.L - lab1.L, 2) +
+        Math.pow(lab2.a - lab1.a, 2) +
+        Math.pow(lab2.b - lab1.b, 2) - Math.pow(deltaL, 2) - Math.pow(deltaC, 2)
+    );
+
+    // 简化的 CIEDE2000 权重
+    const kL = 1, kC = 1, kH = 1;
+    const SL = 1, SC = 1, SH = 1;
+
+    // 返回加权色差
+    return Math.sqrt(
+        Math.pow(deltaL / (kL * SL), 2) +
+        Math.pow(deltaC / (kC * SC), 2) +
+        Math.pow(deltaH / (kH * SH), 2)
+    );
+}
+
+// 使用 LAB 色彩空间的颜色匹配
+function findClosestColorLab(r, g, b) {
+    let closestColor = '#000000';
+    let minDistance = Infinity;
+    const inputRgb = { r, g, b };
+
+    for (const c of MARD_COLORS) {
+        const rgb = hexToRgb(c.color);
+        // 使用简化版 CIEDE2000
+        const distance = ciede2000(inputRgb, rgb);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestColor = c.color;
+        }
+    }
+
+    return closestColor;
+}
+
+// 原来的 RGB 最近邻（保留作为备用）
 function findClosestColor(r, g, b) {
     let closestColor = '#000000';
     let minDistance = Infinity;
 
     for (const c of MARD_COLORS) {
         const rgb = hexToRgb(c.color);
+        // 使用带权重的欧几里得距离（人眼对绿色更敏感）
         const distance = Math.sqrt(
-            Math.pow(r - rgb.r, 2) +
-            Math.pow(g - rgb.g, 2) +
-            Math.pow(b - rgb.b, 2)
+            Math.pow(r - rgb.r, 2) * 0.3 +
+            Math.pow(g - rgb.g, 2) * 0.59 +
+            Math.pow(b - rgb.b, 2) * 0.11
         );
         if (distance < minDistance) {
             minDistance = distance;
@@ -1101,7 +1376,38 @@ function initEventListeners() {
     canvas.addEventListener('mousedown', handleCanvasMouseDown);
     canvas.addEventListener('mousemove', handleCanvasMouseMove);
     canvas.addEventListener('mouseup', handleCanvasMouseUp);
-    canvas.addEventListener('mouseleave', () => { state.isDrawing = false; });
+    canvas.addEventListener('mouseleave', () => {
+        state.isDrawing = false;
+        state.isPanning = false;
+    });
+    // 阻止右键菜单
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // 铅笔工具
+    document.getElementById('btnPencil').addEventListener('click', () => {
+        state.currentTool = TOOLS.PENCIL;
+        document.getElementById('btnPencil').classList.add('active');
+        document.getElementById('btnEraser').classList.remove('active', 'eraser-active');
+        canvas.style.cursor = 'crosshair';
+    });
+
+    // 橡皮擦工具
+    document.getElementById('btnEraser').addEventListener('click', () => {
+        state.currentTool = TOOLS.ERASER;
+        document.getElementById('btnEraser').classList.add('active', 'eraser-active');
+        document.getElementById('btnPencil').classList.remove('active');
+        canvas.style.cursor = 'cell';
+    });
+
+    // 自定义尺寸选择
+    document.getElementById('gridSizeSelect').addEventListener('change', (e) => {
+        const customPanel = document.getElementById('customSizePanel');
+        if (e.target.value === 'custom') {
+            customPanel.style.display = 'block';
+        } else {
+            customPanel.style.display = 'none';
+        }
+    });
 
     // 图片转换事件
     document.getElementById('btnImageConvert').addEventListener('click', showImageConvertPanel);
@@ -1124,6 +1430,23 @@ function initEventListeners() {
         } else if (e.ctrlKey && e.key === 'y') {
             e.preventDefault();
             redo();
+        } else if (e.key === 'ArrowLeft') {
+            state.panX += 50;
+            renderCanvas();
+        } else if (e.key === 'ArrowRight') {
+            state.panX -= 50;
+            renderCanvas();
+        } else if (e.key === 'ArrowUp') {
+            state.panY += 50;
+            renderCanvas();
+        } else if (e.key === 'ArrowDown') {
+            state.panY -= 50;
+            renderCanvas();
+        } else if (e.key === ' ') {
+            // 空格键重置平移
+            state.panX = 0;
+            state.panY = 0;
+            renderCanvas();
         }
     });
 }
