@@ -184,54 +184,6 @@ const state = {
 initGridData();
 
 // ============================================
-// 工具函数
-// ============================================
-
-function deepCopy(obj) {
-    return structuredClone(obj);
-}
-
-function initGridData() {
-    state.gridData = [];
-    for (let y = 0; y < state.canvasHeight; y++) {
-        const row = [];
-        for (let x = 0; x < state.canvasWidth; x++) {
-            row.push(null);
-        }
-        state.gridData.push(row);
-    }
-}
-
-function saveToHistory() {
-    // 移除当前位置之后的历史
-    state.history = state.history.slice(0, state.historyIndex + 1);
-    // 保存当前状态
-    state.history.push(deepCopy(state.gridData));
-    state.historyIndex++;
-    // 限制历史记录数量
-    if (state.history.length > 50) {
-        state.history.shift();
-        state.historyIndex--;
-    }
-}
-
-function undo() {
-    if (state.historyIndex > 0) {
-        state.historyIndex--;
-        state.gridData = deepCopy(state.history[state.historyIndex]);
-        renderCanvas();
-    }
-}
-
-function redo() {
-    if (state.historyIndex < state.history.length - 1) {
-        state.historyIndex++;
-        state.gridData = deepCopy(state.history[state.historyIndex]);
-        renderCanvas();
-    }
-}
-
-// ============================================
 // 画布操作
 // ============================================
 
@@ -345,6 +297,7 @@ function setPixel(x, y, color) {
 }
 
 function floodFill(x, y, color) {
+    if (x < 0 || x >= state.canvasWidth || y < 0 || y >= state.canvasHeight) return;
     const targetColor = state.gridData[y][x];
     if (targetColor === color) return;
 
