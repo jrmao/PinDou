@@ -1,8 +1,9 @@
 <!--
 /**
  * PinDou - 拼豆图案设计工具
- * 版本：v1.0.6
+ * 版本：v1.0.7
  * 更新日志：
+ *   2026-05-03 v1.0.7 - 导出PNG功能
  *   2026-05-03 v1.0.6 - 模板库功能
  *   2026-05-03 v1.0.5 - 图片转图案功能
  *   2026-05-03 v1.0.4 - Mard 颜色盘
@@ -810,6 +811,39 @@ function updateStatusBar() {
 }
 
 // ============================================
+// 导出功能
+// ============================================
+
+function exportAsPNG() {
+    // 创建导出用的临时 canvas
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = state.canvasWidth;
+    exportCanvas.height = state.canvasHeight;
+    const exportCtx = exportCanvas.getContext('2d');
+
+    // 绘制像素（1:1 比例）
+    for (let y = 0; y < state.canvasHeight; y++) {
+        for (let x = 0; x < state.canvasWidth; x++) {
+            const color = state.gridData[y][x];
+            if (color) {
+                exportCtx.fillStyle = color;
+                exportCtx.fillRect(x, y, 1, 1);
+            }
+        }
+    }
+
+    // 转换为 Blob 并下载
+    exportCanvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `pindou-${Date.now()}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, 'image/png');
+}
+
+// ============================================
 // 工具函数
 // ============================================
 
@@ -1029,6 +1063,9 @@ function initEventListeners() {
     // 模板库事件
     document.getElementById('btnTemplates').addEventListener('click', showTemplatePanel);
     document.getElementById('btnCloseTemplates').addEventListener('click', hideTemplatePanel);
+
+    // 导出PNG
+    document.getElementById('btnExport').addEventListener('click', exportAsPNG);
 
     // 键盘快捷键
     document.addEventListener('keydown', (e) => {
