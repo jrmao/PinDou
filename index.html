@@ -1394,6 +1394,10 @@ function enhanceColorBlocks(denoiseLevel = 3, edgeSharpness = 5) {
         return region;
     }
 
+    // 根据边缘锐度计算边缘区域边距
+    // edgeSharpness 0-10: margin 从 5 到 1 (高锐度=小边距=锐利边缘)
+    const margin = Math.max(1, Math.floor((10 - edgeSharpness) * 0.4)) + 1;
+
     // 遍历所有格子进行区域生长
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
@@ -1430,7 +1434,7 @@ function enhanceColorBlocks(denoiseLevel = 3, edgeSharpness = 5) {
                 // 只有在边缘区域且差异不大时才合并
                 if (mainColor &&
                     colorDistance(currentColor, mainColor) < threshold * 2 &&
-                    isEdgeRegion(region[0][0], region[0][1], width, height, 2)) {
+                    isEdgeRegion(region[0][0], region[0][1], width, height, margin)) {
                     for (const [rx, ry] of region) {
                         state.gridData[ry][rx] = mainColor;
                     }
