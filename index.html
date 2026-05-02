@@ -1,9 +1,8 @@
 <!--
 /**
  * PinDou - 拼豆图案设计工具
- * 版本：v1.1.5
+ * 版本：v1.1.4
  * 更新日志：
- *   2026-05-02 v1.1.5 - 优化：图片转换算法（USM锐化+Sobel边缘增强+区域生长合并）
  *   2026-05-02 v1.1.4 - 修复：按钮无法点击的问题；增强错误处理和边界检查
  *   2026-05-02 v1.1.3 - 新增：鼠标滚轮缩放功能；小尺寸色块融合算法；导出PNG质量优化（100×100达3MB）
  *   2026-05-02 v1.1.2 - 优化：导出PNG像素增大至30px/格；色号字体加黑加粗描边；每10格添加深色辅助线
@@ -1291,8 +1290,17 @@ function convertImageToPattern() {
         gridWidth = gridHeight = parseInt(sizeSelect);
     }
 
-    // 第一步：对原图进行预处理（锐化 + 边缘增强）
-    const processedImageData = preprocessImage(uploadedImage, gridWidth, gridHeight);
+    // 创建临时 canvas 来采样图片
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = gridWidth;
+    tempCanvas.height = gridHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    // 绘制并缩放图片（保持宽高比）
+    tempCtx.drawImage(uploadedImage, 0, 0, gridWidth, gridHeight);
+
+    // 获取像素数据
+    const imageData = tempCtx.getImageData(0, 0, gridWidth, gridHeight);
 
     // 调整画布尺寸
     state.canvasWidth = gridWidth;
@@ -1301,17 +1309,17 @@ function convertImageToPattern() {
     canvas.height = gridHeight * PIXEL_SIZE;
     initGridData();
 
-    // 第二步：使用预处理后的图像数据进行颜色匹配
+    // 转换每个像素
     for (let y = 0; y < gridHeight; y++) {
         for (let x = 0; x < gridWidth; x++) {
             const idx = (y * gridWidth + x) * 4;
-            const r = processedImageData.data[idx];
-            const g = processedImageData.data[idx + 1];
-            const b = processedImageData.data[idx + 2];
-            const a = processedImageData.data[idx + 3];
+            const r = imageData.data[idx];
+            const g = imageData.data[idx + 1];
+            const b = imageData.data[idx + 2];
+            const a = imageData.data[idx + 3];
 
             // 检测是否为空白/透明/接近白色的背景
-            const isEmpty = isBackgroundColor(r, g, b, a);
+            const isEmpty = isBackgroundColor(r, g, b, a, x, y, gridWidth, gridHeight, 5);
             if (isEmpty) {
                 // 背景用白色
                 state.gridData[y][x] = '#FFFFFF';
@@ -1322,7 +1330,7 @@ function convertImageToPattern() {
         }
     }
 
-    // 第三步：对小尺寸图像应用色块增强算法
+    // 对小尺寸图像应用色块融合和边界增强算法
     if (gridWidth <= 100 || gridHeight <= 100) {
         enhanceColorBlocks();
     }
@@ -1332,205 +1340,18 @@ function convertImageToPattern() {
     hideImageConvertPanel();
 }
 
-// 图像预处理：锐化和边缘增强
-function preprocessImage(img, targetWidth, targetHeight) {
-    // 创建临时 canvas
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = targetWidth;
-    tempCanvas.height = targetHeight;
-    const tempCtx = tempCanvas.getContext('2d');
-
-    // 绘制并缩放图片
-    tempCtx.drawImage(img, 0, 0, targetWidth, targetHeight);
-    let imageData = tempCtx.getImageData(0, 0, targetWidth, targetHeight);
-
-    // 1. 应用 USM 锐化（Unsharp Masking）
-    imageData = applyUnsharpMask(imageData, targetWidth, targetHeight);
-
-    // 2. 应用边缘增强
-    imageData = applyEdgeEnhancement(imageData, targetWidth, targetHeight);
-
-    return imageData;
-}
-
-// USM 锐化算法
-function applyUnsharpMask(imageData, width, height) {
-    const data = imageData.data;
-    const tempData = new Uint8ClampedArray(data);
-
-    // USM 参数
-    const amount = 1.5;  // 锐化强度
-    const radius = 2;    // 模糊半径
-    const threshold = 0; // 阈值
-
-    // 对每个像素（边缘像素跳过）
-    for (let y = radius; y < height - radius; y++) {
-        for (let x = radius; x < width - radius; x++) {
-            const idx = (y * width + x) * 4;
-
-            // 计算模糊后的值（简单box blur）
-            let blurR = 0, blurG = 0, blurB = 0;
-            let count = 0;
-
-            for (let dy = -radius; dy <= radius; dy++) {
-                for (let dx = -radius; dx <= radius; dx++) {
-                    const blurIdx = ((y + dy) * width + (x + dx)) * 4;
-                    blurR += tempData[blurIdx];
-                    blurG += tempData[blurIdx + 1];
-                    blurB += tempData[blurIdx + 2];
-                    count++;
-                }
-            }
-
-            blurR /= count;
-            blurG /= count;
-            blurB /= count;
-
-            // 计算差异
-            const diffR = tempData[idx] - blurR;
-            const diffG = tempData[idx + 1] - blurG;
-            const diffB = tempData[idx + 2] - blurB;
-
-            // 如果差异超过阈值，应用锐化
-            if (Math.abs(diffR) > threshold || Math.abs(diffG) > threshold || Math.abs(diffB) > threshold) {
-                data[idx] = Math.min(255, Math.max(0, tempData[idx] + diffR * amount));
-                data[idx + 1] = Math.min(255, Math.max(0, tempData[idx + 1] + diffG * amount));
-                data[idx + 2] = Math.min(255, Math.max(0, tempData[idx + 2] + diffB * amount));
-            }
-        }
-    }
-
-    return imageData;
-}
-
-// 边缘增强算法
-function applyEdgeEnhancement(imageData, width, height) {
-    const data = imageData.data;
-    const tempData = new Uint8ClampedArray(data);
-
-    // Sobel 算子
-    const sobelX = [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]];
-    const sobelY = [[-1, -2, -1], [0, 0, 0], [1, 2, 1]];
-
-    const edgeStrength = 0.3; // 边缘增强强度
-
-    for (let y = 1; y < height - 1; y++) {
-        for (let x = 1; x < width - 1; x++) {
-            const idx = (y * width + x) * 4;
-
-            let gxR = 0, gxG = 0, gxB = 0;
-            let gyR = 0, gyG = 0, gyB = 0;
-
-            // 应用 Sobel 算子
-            for (let dy = -1; dy <= 1; dy++) {
-                for (let dx = -1; dx <= 1; dx++) {
-                    const pixelIdx = ((y + dy) * width + (x + dx)) * 4;
-                    const weightX = sobelX[dy + 1][dx + 1];
-                    const weightY = sobelY[dy + 1][dx + 1];
-
-                    gxR += tempData[pixelIdx] * weightX;
-                    gxG += tempData[pixelIdx + 1] * weightX;
-                    gxB += tempData[pixelIdx + 2] * weightX;
-
-                    gyR += tempData[pixelIdx] * weightY;
-                    gyG += tempData[pixelIdx + 1] * weightY;
-                    gyB += tempData[pixelIdx + 2] * weightY;
-                }
-            }
-
-            // 计算梯度幅度
-            const magnitude = Math.sqrt(gxR * gxR + gxG * gxG + gxB * gxB +
-                                         gyR * gyR + gyG * gyG + gyB * gyB);
-
-            // 如果是边缘区域，增强对比度
-            if (magnitude > 100) {
-                const factor = 1 + edgeStrength * (magnitude / 500);
-
-                data[idx] = Math.min(255, Math.max(0, tempData[idx] * factor));
-                data[idx + 1] = Math.min(255, Math.max(0, tempData[idx + 1] * factor));
-                data[idx + 2] = Math.min(255, Math.max(0, tempData[idx + 2] * factor));
-            }
-        }
-    }
-
-    return imageData;
-}
-
-// 增强版色块融合和边界增强算法（让色块更清晰）
+// 色块融合和边界增强算法（针对小尺寸图像）
 function enhanceColorBlocks() {
     const width = state.canvasWidth;
     const height = state.canvasHeight;
+    const threshold = 15; // 颜色差异阈值，低于此值认为是相近颜色
 
-    // 第一步：去噪处理 - 使用中值滤波去除孤立噪点
-    applyMedianFilter();
-
-    // 第二步：区域生长合并 - 将小区域合并到周围主色
-    applyRegionGrowing();
-
-    // 第三步：边缘保护 - 确保边缘不被模糊
-    protectEdges();
-
-    // 第四步：颜色一致性增强 - 让同色区域更加纯净
-    enhanceColorConsistency();
-}
-
-// 中值滤波 - 去除孤立噪点同时保持边缘
-function applyMedianFilter() {
-    const width = state.canvasWidth;
-    const height = state.canvasHeight;
-    const directions = [[-1,-1], [-1,0], [-1,1], [0,-1], [0,1], [1,-1], [1,0], [1,1]];
-
-    const tempGrid = state.gridData.map(row => [...row]);
-
-    for (let y = 1; y < height - 1; y++) {
-        for (let x = 1; x < width - 1; x++) {
-            const currentColor = tempGrid[y][x];
-
-            // 收集周围8个邻居的颜色
-            const neighbors = [currentColor];
-            let diffCount = 0;
-
-            for (const [dx, dy] of directions) {
-                const nx = x + dx, ny = y + dy;
-                neighbors.push(tempGrid[ny][nx]);
-                if (tempGrid[ny][nx] !== currentColor) {
-                    diffCount++;
-                }
-            }
-
-            // 如果与太多邻居颜色不同（可能是噪点），使用中值
-            if (diffCount >= 6) {
-                // 找到最常见的邻居颜色
-                const colorCounts = {};
-                for (const c of neighbors) {
-                    if (c) {
-                        colorCounts[c] = (colorCounts[c] || 0) + 1;
-                    }
-                }
-
-                let maxCount = 0;
-                let medianColor = currentColor;
-                for (const [color, count] of Object.entries(colorCounts)) {
-                    if (count > maxCount) {
-                        maxCount = count;
-                        medianColor = color;
-                    }
-                }
-
-                state.gridData[y][x] = medianColor;
-            }
-        }
-    }
-}
-
-// 区域生长合并 - 将小区域合并到周围主色
-function applyRegionGrowing() {
-    const width = state.canvasWidth;
-    const height = state.canvasHeight;
-    const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
-
+    // 创建临时网格用于区域生长
     const tempGrid = state.gridData.map(row => [...row]);
     const visited = Array.from({ length: height }, () => Array(width).fill(false));
+
+    // 方向：上下左右
+    const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
 
     // 计算两个颜色的差异
     function colorDistance(c1, c2) {
@@ -1544,7 +1365,7 @@ function applyRegionGrowing() {
         );
     }
 
-    // 区域生长
+    // 区域生长：将相近颜色融合
     function floodFillMerge(startX, startY, targetColor) {
         const queue = [[startX, startY]];
         const region = [];
@@ -1566,9 +1387,7 @@ function applyRegionGrowing() {
         return region;
     }
 
-    // 遍历所有格子进行区域生长，合并小区域
-    const minRegionSize = Math.max(3, Math.floor(Math.min(width, height) * 0.05)); // 动态阈值
-
+    // 遍历所有格子进行区域生长
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             if (visited[y][x]) continue;
@@ -1576,23 +1395,23 @@ function applyRegionGrowing() {
             const currentColor = tempGrid[y][x];
             const region = floodFillMerge(x, y, currentColor);
 
-            // 如果区域太小，合并到周围主色
-            if (region.length <= minRegionSize) {
+            // 如果区域太小（噪声点），尝试合并到周围的主颜色
+            if (region.length <= 3) {
+                // 找到周围的主要颜色
                 const neighborColors = {};
                 for (const [rx, ry] of region) {
                     for (const [dx, dy] of directions) {
                         const nx = rx + dx, ny = ry + dy;
                         if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                            if (!visited[ny][nx]) {
-                                const nc = tempGrid[ny][nx];
-                                if (nc !== currentColor) {
-                                    neighborColors[nc] = (neighborColors[nc] || 0) + 1;
-                                }
+                            const nc = tempGrid[ny][nx];
+                            if (nc !== currentColor) {
+                                neighborColors[nc] = (neighborColors[nc] || 0) + 1;
                             }
                         }
                     }
                 }
 
+                // 找到最多的邻居颜色
                 let maxCount = 0;
                 let mainColor = null;
                 for (const [color, count] of Object.entries(neighborColors)) {
@@ -1602,7 +1421,8 @@ function applyRegionGrowing() {
                     }
                 }
 
-                if (mainColor && colorDistance(currentColor, mainColor) < 50) {
+                // 如果找到主颜色且差异不大，则合并
+                if (mainColor && colorDistance(currentColor, mainColor) < threshold * 2) {
                     for (const [rx, ry] of region) {
                         state.gridData[ry][rx] = mainColor;
                     }
@@ -1610,79 +1430,80 @@ function applyRegionGrowing() {
             }
         }
     }
-}
 
-// 边缘保护 - 确保边缘清晰
-function protectEdges() {
-    const width = state.canvasWidth;
-    const height = state.canvasHeight;
-    const directions = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]];
-
-    const tempGrid = state.gridData.map(row => [...row]);
-
-    // 检测边缘像素（与8连通域内有不同颜色）
-    const isEdge = Array.from({ length: height }, () => Array(width).fill(false));
+    // 边界增强：强化不同颜色之间的边界
+    const edgeGrid = Array.from({ length: height }, () => Array(width).fill(false));
 
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-            const currentColor = tempGrid[y][x];
+            const currentColor = state.gridData[y][x];
+
+            // 检查上下左右是否有不同颜色
             for (const [dx, dy] of directions) {
                 const nx = x + dx, ny = y + dy;
                 if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                    if (tempGrid[ny][nx] !== currentColor) {
-                        isEdge[y][x] = true;
+                    const neighborColor = state.gridData[ny][nx];
+                    if (currentColor !== neighborColor) {
+                        edgeGrid[y][x] = true;
                         break;
                     }
                 }
             }
         }
     }
-
-    // 边缘像素使用原始颜色，不进行任何修改
-    // 这个函数主要用于标记，目前已经在 state.gridData 中保持了边缘像素的原始颜色
 }
 
-// 颜色一致性增强 - 让同色区域更加纯净
-function enhanceColorConsistency() {
-    const width = state.canvasWidth;
-    const height = state.canvasHeight;
-    const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+// ============================================
+// 背景检测（增强版：添加位置上下文）
+// ============================================
 
-    const tempGrid = state.gridData.map(row => [...row]);
-
-    // 对每个像素，检查其4连通域，如果超过3个邻居是同色，则保持；否则尝试修正
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            const currentColor = tempGrid[y][x];
-            let sameCount = 0;
-
-            for (const [dx, dy] of directions) {
-                const nx = x + dx, ny = y + dy;
-                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                    if (tempGrid[ny][nx] === currentColor) {
-                        sameCount++;
-                    }
-                }
-            }
-
-            // 如果少于2个邻居是同色，可能是边缘或噪声
-            // 边缘区域保持原色，中心区域的噪点会被区域生长函数处理
-            // 这里不做强制修改，保持边缘清晰
-        }
-    }
-}
-
-// 检测是否为背景色（空白/透明/接近白色）
-function isBackgroundColor(r, g, b, a) {
-    // 透明像素
+/**
+ * 检测是否为背景色
+ * @param {number} r - 红色通道
+ * @param {number} g - 绿色通道
+ * @param {number} b - 蓝色通道
+ * @param {number} a - Alpha 通道
+ * @param {number} x - 像素 X 坐标
+ * @param {number} y - 像素 Y 坐标
+ * @param {number} width - 画布宽度
+ * @param {number} height - 画布高度
+ * @param {number} sensitivity - 背景敏感度 (0-10)
+ * @returns {boolean}
+ */
+function isBackgroundColor(r, g, b, a, x, y, width, height, sensitivity = 5) {
+    // 透明像素一定是背景
     if (a < 128) return true;
 
-    // 接近白色的被认为是背景
     const brightness = (r + g + b) / 3;
     const saturation = Math.max(r, g, b) - Math.min(r, g, b);
-    if (brightness > 240 && saturation < 20) return true;
+
+    // 根据敏感度计算阈值
+    // sensitivity 0-10: 亮度阈值从 250 降到 235, 饱和度阈值从 25降到 10
+    const brightnessThreshold = 250 - (sensitivity * 1.5);
+    const saturationThreshold = 25 - (sensitivity * 1.5);
+
+    // 非常亮的单色区域
+    if (brightness > brightnessThreshold && saturation < saturationThreshold) {
+        // 只有在边缘区域才判定为背景
+        if (isEdgeRegion(x, y, width, height, 3)) {
+            return true;
+        }
+    }
 
     return false;
+}
+
+/**
+ * 判断是否为边缘区域
+ * @param {number} x - 像素 X 坐标
+ * @param {number} y - 像素 Y 坐标
+ * @param {number} width - 画布宽度
+ * @param {number} height - 画布高度
+ * @param {number} margin - 边缘宽度（像素）
+ * @returns {boolean}
+ */
+function isEdgeRegion(x, y, width, height, margin = 3) {
+    return x < margin || x >= width - margin || y < margin || y >= height - margin;
 }
 
 // ============================================
