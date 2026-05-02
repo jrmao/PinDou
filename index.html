@@ -236,6 +236,30 @@
                         <label>宽度: <input type="number" id="customWidth" min="8" max="200" value="50" style="width:60px;" /> ×
                         高度: <input type="number" id="customHeight" min="8" max="200" value="50" style="width:60px;" /></label>
                     </div>
+                    <div style="margin:16px 0; border-top:1px solid #0f3460; padding-top:16px;">
+                        <label style="display:block; margin-bottom:8px;">算法参数：</label>
+                        <div style="margin:8px 0;">
+                            <label style="font-size:12px;">去噪强度：<span id="denoiseValue">3</span></label><br>
+                            <input type="range" id="denoiseLevel" min="0" max="10" value="3"
+                                style="width:200px;"
+                                oninput="document.getElementById('denoiseValue').textContent=this.value" />
+                            <span style="font-size:11px; color:#888;">(值越大越保守，保留更多细节)</span>
+                        </div>
+                        <div style="margin:8px 0;">
+                            <label style="font-size:12px;">背景敏感度：<span id="sensitivityValue">5</span></label><br>
+                            <input type="range" id="bgSensitivity" min="0" max="10" value="5"
+                                style="width:200px;"
+                                oninput="document.getElementById('sensitivityValue').textContent=this.value" />
+                            <span style="font-size:11px; color:#888;">(值越大背景判断越严格)</span>
+                        </div>
+                        <div style="margin:8px 0;">
+                            <label style="font-size:12px;">边缘锐度：<span id="edgeValue">5</span></label><br>
+                            <input type="range" id="edgeSharpness" min="0" max="10" value="5"
+                                style="width:200px;"
+                                oninput="document.getElementById('edgeValue').textContent=this.value" />
+                            <span style="font-size:11px; color:#888;">(值越大线条越锐利)</span>
+                        </div>
+                    </div>
                     <div id="imagePreview" style="margin:16px 0; max-width:300px; max-height:300px;">
                         <img id="previewImg" style="max-width:100%; max-height:100%;" />
                     </div>
@@ -1290,6 +1314,11 @@ function convertImageToPattern() {
         gridWidth = gridHeight = parseInt(sizeSelect);
     }
 
+    // 获取算法参数
+    const denoiseLevel = parseInt(document.getElementById('denoiseLevel')?.value || '3');
+    const bgSensitivity = parseInt(document.getElementById('bgSensitivity')?.value || '5');
+    const edgeSharpness = parseInt(document.getElementById('edgeSharpness')?.value || '5');
+
     // 创建临时 canvas 来采样图片
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = gridWidth;
@@ -1319,7 +1348,7 @@ function convertImageToPattern() {
             const a = imageData.data[idx + 3];
 
             // 检测是否为空白/透明/接近白色的背景
-            const isEmpty = isBackgroundColor(r, g, b, a, x, y, gridWidth, gridHeight, 5);
+            const isEmpty = isBackgroundColor(r, g, b, a, x, y, gridWidth, gridHeight, bgSensitivity);
             if (isEmpty) {
                 // 背景用白色
                 state.gridData[y][x] = '#FFFFFF';
@@ -1332,7 +1361,7 @@ function convertImageToPattern() {
 
     // 对小尺寸图像应用色块融合和边界增强算法
     if (gridWidth <= 100 || gridHeight <= 100) {
-        enhanceColorBlocks();
+        enhanceColorBlocks(denoiseLevel, edgeSharpness);
     }
 
     renderCanvas();
@@ -1396,7 +1425,7 @@ function enhanceColorBlocks(denoiseLevel = 3, edgeSharpness = 5) {
 
     // 根据边缘锐度计算边缘区域边距
     // edgeSharpness 0-10: margin 从 1 到 5 (高锐度=大边距=捕获更多边缘像素)
-    const margin = Math.max(1, Math.floor(edgeSharpness * 0.4)) + 1;
+    const margin = Math.max(1, Math.floor(edgeSharpness * 0.4) + 1);
 
     // 遍历所有格子进行区域生长
     for (let y = 0; y < height; y++) {
