@@ -1,8 +1,9 @@
 <!--
 /**
  * PinDou - 拼豆图案设计工具
- * 版本：v1.0.7
+ * 版本：v1.0.8
  * 更新日志：
+ *   2026-05-03 v1.0.8 - LocalStorage 自动保存与加载
  *   2026-05-03 v1.0.7 - 导出PNG功能
  *   2026-05-03 v1.0.6 - 模板库功能
  *   2026-05-03 v1.0.5 - 图片转图案功能
@@ -645,6 +646,51 @@ const state = {
 initGridData();
 
 // ============================================
+// LocalStorage 存储
+// ============================================
+
+const STORAGE_KEY = 'pindou_works';
+
+function autoSave() {
+    const data = {
+        width: state.canvasWidth,
+        height: state.canvasHeight,
+        gridData: state.gridData,
+        timestamp: Date.now()
+    };
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+        console.warn('自动保存失败:', e);
+    }
+}
+
+function loadFromStorage() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return false;
+
+    try {
+        const data = JSON.parse(saved);
+        state.canvasWidth = data.width;
+        state.canvasHeight = data.height;
+        state.gridData = data.gridData;
+
+        canvas.width = state.canvasWidth * PIXEL_SIZE;
+        canvas.height = state.canvasHeight * PIXEL_SIZE;
+
+        renderCanvas();
+        saveToHistory();
+        return true;
+    } catch (e) {
+        console.error('Failed to load saved data:', e);
+        return false;
+    }
+}
+
+// 定时保存（每30秒）
+let autoSaveInterval = setInterval(autoSave, 30000);
+
+// ============================================
 // 画布操作
 // ============================================
 
@@ -754,6 +800,7 @@ function setPixel(x, y, color) {
     if (x >= 0 && x < state.canvasWidth && y >= 0 && y < state.canvasHeight) {
         state.gridData[y][x] = color;
         renderCanvas();
+        autoSave();
     }
 }
 
@@ -783,6 +830,7 @@ function floodFill(x, y, color) {
     }
 
     renderCanvas();
+    autoSave();
 }
 
 function drawShape(x1, y1, x2, y2, color) {
@@ -801,6 +849,7 @@ function drawShape(x1, y1, x2, y2, color) {
     }
 
     renderCanvas();
+    autoSave();
 }
 
 function updateStatusBar() {
@@ -1142,6 +1191,7 @@ function renderColorPanel() {
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', () => {
     initCanvas();
+    loadFromStorage(); // 尝试从 LocalStorage 加载数据
     initEventListeners();
     renderColorPanel();
 });
