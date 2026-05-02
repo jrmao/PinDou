@@ -1,8 +1,9 @@
 <!--
 /**
  * PinDou - 拼豆图案设计工具
- * 版本：v1.0.3
+ * 版本：v1.0.4
  * 更新日志：
+ *   2026-05-03 v1.0.4 - Mard 颜色盘
  *   2026-05-03 v1.0.3 - 画布操作核心逻辑
  *   2026-05-03 v1.0.2-fix - 修复状态管理中的安全隐患
  *   2026-05-03 v1.0.2 - 状态管理和常量配置
@@ -104,6 +105,46 @@
             font-size: 12px;
             color: #888;
         }
+
+        /* 颜色盘样式 */
+        .color-panel h3 {
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #e94560;
+        }
+
+        .color-series {
+            margin-bottom: 12px;
+        }
+
+        .color-series h4 {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 4px;
+        }
+
+        .color-btn {
+            width: 28px;
+            height: 28px;
+            border: 2px solid transparent;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        .color-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .color-btn.selected {
+            border: 2px solid white;
+        }
     </style>
 </head>
 <body>
@@ -145,8 +186,338 @@
 // 常量配置
 // ============================================
 
-// TODO: Mard 291 色数据将在 Task 5 中填充
-const COLORS = {};
+// ============================================
+// Mard 291 色颜色盘
+// 完整颜色数据参考 Mard 官方色卡
+// ============================================
+const MARD_COLORS = [
+    // A系列 - 黄橙色 (26 colors)
+    { num: 'A1', type: 'normal', color: '#faf5cd' },
+    { num: 'A2', type: 'normal', color: '#fcfea6' },
+    { num: 'A3', type: 'normal', color: '#fcf963' },
+    { num: 'A4', type: 'normal', color: '#f7ec5c' },
+    { num: 'A5', type: 'normal', color: '#f0d83a' },
+    { num: 'A6', type: 'normal', color: '#fdad51' },
+    { num: 'A7', type: 'normal', color: '#fa8c4f' },
+    { num: 'A8', type: 'normal', color: '#fbda4d' },
+    { num: 'A9', type: 'normal', color: '#f7c84b' },
+    { num: 'A10', type: 'normal', color: '#f5b84a' },
+    { num: 'A11', type: 'normal', color: '#f0a832' },
+    { num: 'A12', type: 'normal', color: '#e68a25' },
+    { num: 'A13', type: 'normal', color: '#d47319' },
+    { num: 'A14', type: 'normal', color: '#c95d12' },
+    { num: 'A15', type: 'normal', color: '#b84512' },
+    { num: 'A16', type: 'normal', color: '#9e330f' },
+    { num: 'A17', type: 'normal', color: '#f9e64f' },
+    { num: 'A18', type: 'normal', color: '#f5d61e' },
+    { num: 'A19', type: 'normal', color: '#e8c20d' },
+    { num: 'A20', type: 'normal', color: '#d4a512' },
+    { num: 'A21', type: 'normal', color: '#c4941c' },
+    { num: 'A22', type: 'normal', color: '#b07d1a' },
+    { num: 'A23', type: 'normal', color: '#9a6515' },
+    { num: 'A24', type: 'normal', color: '#8b5012' },
+    { num: 'A25', type: 'normal', color: '#7a3d0f' },
+    { num: 'A26', type: 'normal', color: '#5c2c0a' },
+
+    // B系列 - 绿色 (32 colors)
+    { num: 'B1', type: 'normal', color: '#64f343' },
+    { num: 'B2', type: 'normal', color: '#a1f586' },
+    { num: 'B3', type: 'normal', color: '#5fdf34' },
+    { num: 'B4', type: 'normal', color: '#39e158' },
+    { num: 'B5', type: 'normal', color: '#28c94b' },
+    { num: 'B6', type: 'normal', color: '#1eb342' },
+    { num: 'B7', type: 'normal', color: '#169c38' },
+    { num: 'B8', type: 'normal', color: '#0e852d' },
+    { num: 'B9', type: 'normal', color: '#0a6e24' },
+    { num: 'B10', type: 'normal', color: '#085a1d' },
+    { num: 'B11', type: 'normal', color: '#85e82f' },
+    { num: 'B12', type: 'normal', color: '#6dd91e' },
+    { num: 'B13', type: 'normal', color: '#52c415' },
+    { num: 'B14', type: 'normal', color: '#3db00c' },
+    { num: 'B15', type: 'normal', color: '#2e9d08' },
+    { num: 'B16', type: 'normal', color: '#238005' },
+    { num: 'B17', type: 'normal', color: '#1a6604' },
+    { num: 'B18', type: 'normal', color: '#125003' },
+    { num: 'B19', type: 'normal', color: '#0a3e02' },
+    { num: 'B20', type: 'normal', color: '#b8f07a' },
+    { num: 'B21', type: 'normal', color: '#9de05f' },
+    { num: 'B22', type: 'normal', color: '#7ecc44' },
+    { num: 'B23', type: 'normal', color: '#5fb82e' },
+    { num: 'B24', type: 'normal', color: '#4ca020' },
+    { num: 'B25', type: 'normal', color: '#3d8918' },
+    { num: 'B26', type: 'normal', color: '#2f6e10' },
+    { num: 'B27', type: 'normal', color: '#22550a' },
+    { num: 'B28', type: 'normal', color: '#164004' },
+    { num: 'B29', type: 'normal', color: '#0e2d03' },
+    { num: 'B30', type: 'normal', color: '#072002' },
+    { num: 'B31', type: 'normal', color: '#041501' },
+    { num: 'B32', type: 'normal', color: '#020d00' },
+
+    // C系列 - 蓝青色 (29 colors)
+    { num: 'C1', type: 'normal', color: '#abf0d6' },
+    { num: 'C2', type: 'normal', color: '#75edd9' },
+    { num: 'C3', type: 'normal', color: '#3de3d5' },
+    { num: 'C4', type: 'normal', color: '#1dd3c6' },
+    { num: 'C5', type: 'normal', color: '#1dbcb0' },
+    { num: 'C6', type: 'normal', color: '#18a49c' },
+    { num: 'C7', type: 'normal', color: '#148d85' },
+    { num: 'C8', type: 'normal', color: '#107770' },
+    { num: 'C9', type: 'normal', color: '#0c605a' },
+    { num: 'C10', type: 'normal', color: '#084a45' },
+    { num: 'C11', type: 'normal', color: '#053833' },
+    { num: 'C12', type: 'normal', color: '#032623' },
+    { num: 'C13', type: 'normal', color: '#c5f7f2' },
+    { num: 'C14', type: 'normal', color: '#9ceeE8' },
+    { num: 'C15', type: 'normal', color: '#6ae3d9' },
+    { num: 'C16', type: 'normal', color: '#3bd4c7' },
+    { num: 'C17', type: 'normal', color: '#22bfb0' },
+    { num: 'C18', type: 'normal', color: '#1aa596' },
+    { num: 'C19', type: 'normal', color: '#158a7d' },
+    { num: 'C20', type: 'normal', color: '#107064' },
+    { num: 'C21', type: 'normal', color: '#0b564d' },
+    { num: 'C22', type: 'normal', color: '#074039' },
+    { num: 'C23', type: 'normal', color: '#042c27' },
+    { num: 'C24', type: 'normal', color: '#c0e4f5' },
+    { num: 'C25', type: 'normal', color: '#8cd1ec' },
+    { num: 'C26', type: 'normal', color: '#5bbce0' },
+    { num: 'C27', type: 'normal', color: '#2fa7d2' },
+    { num: 'C28', type: 'normal', color: '#1e8fc4' },
+    { num: 'C29', type: 'normal', color: '#1879a6' },
+
+    // D系列 - 紫蓝色 (26 colors)
+    { num: 'D1', type: 'normal', color: '#a2c5f5' },
+    { num: 'D2', type: 'normal', color: '#679df2' },
+    { num: 'D3', type: 'normal', color: '#3979eb' },
+    { num: 'D4', type: 'normal', color: '#165cd1' },
+    { num: 'D5', type: 'normal', color: '#1045a8' },
+    { num: 'D6', type: 'normal', color: '#0c3585' },
+    { num: 'D7', type: 'normal', color: '#082663' },
+    { num: 'D8', type: 'normal', color: '#061943' },
+    { num: 'D9', type: 'normal', color: '#041226' },
+    { num: 'D10', type: 'normal', color: '#c8b8f8' },
+    { num: 'D11', type: 'normal', color: '#a891f0' },
+    { num: 'D12', type: 'normal', color: '#866ce6' },
+    { num: 'D13', type: 'normal', color: '#6448dc' },
+    { num: 'D14', type: 'normal', color: '#4c2fd0' },
+    { num: 'D15', type: 'normal', color: '#3d1fb5' },
+    { num: 'D16', type: 'normal', color: '#301498' },
+    { num: 'D17', type: 'normal', color: '#240c7a' },
+    { num: 'D18', type: 'normal', color: '#1a0759' },
+    { num: 'D19', type: 'normal', color: '#11043c' },
+    { num: 'D20', type: 'normal', color: '#d4c0f5' },
+    { num: 'D21', type: 'normal', color: '#b496ec' },
+    { num: 'D22', type: 'normal', color: '#946ce0' },
+    { num: 'D23', type: 'normal', color: '#7344d3' },
+    { num: 'D24', type: 'normal', color: '#5d28c2' },
+    { num: 'D25', type: 'normal', color: '#4a1da5' },
+    { num: 'D26', type: 'normal', color: '#381487' },
+
+    // E系列 - 粉红色 (24 colors)
+    { num: 'E1', type: 'normal', color: '#fad4e0' },
+    { num: 'E2', type: 'normal', color: '#f8b5d0' },
+    { num: 'E3', type: 'normal', color: '#f592b9' },
+    { num: 'E4', type: 'normal', color: '#ee699a' },
+    { num: 'E5', type: 'normal', color: '#e64683' },
+    { num: 'E6', type: 'normal', color: '#d62e6e' },
+    { num: 'E7', type: 'normal', color: '#c41d5c' },
+    { num: 'E8', type: 'normal', color: '#a8124c' },
+    { num: 'E9', type: 'normal', color: '#8c0a3e' },
+    { num: 'E10', type: 'normal', color: '#6f0530' },
+    { num: 'E11', type: 'normal', color: '#f5b8c4' },
+    { num: 'E12', type: 'normal', color: '#ed9aa9' },
+    { num: 'E13', type: 'normal', color: '#e27c8e' },
+    { num: 'E14', type: 'normal', color: '#d45e73' },
+    { num: 'E15', type: 'normal', color: '#c4465d' },
+    { num: 'E16', type: 'normal', color: '#ae324a' },
+    { num: 'E17', type: 'normal', color: '#96233a' },
+    { num: 'E18', type: 'normal', color: '#7c172b' },
+    { num: 'E19', type: 'normal', color: '#5e0f1e' },
+    { num: 'E20', type: 'normal', color: '#fcd6e8' },
+    { num: 'E21', type: 'normal', color: '#f8b8d5' },
+    { num: 'E22', type: 'normal', color: '#f596bf' },
+    { num: 'E23', type: 'normal', color: '#ef72a5' },
+    { num: 'E24', type: 'normal', color: '#e65691' },
+
+    // F系列 - 红色 (25 colors)
+    { num: 'F1', type: 'normal', color: '#f8b4a8' },
+    { num: 'F2', type: 'normal', color: '#f48977' },
+    { num: 'F3', type: 'normal', color: '#ec5a44' },
+    { num: 'F4', type: 'normal', color: '#e0301e' },
+    { num: 'F5', type: 'normal', color: '#c52318' },
+    { num: 'F6', type: 'normal', color: '#a81a14' },
+    { num: 'F7', type: 'normal', color: '#8c1210' },
+    { num: 'F8', type: 'normal', color: '#6e0b0b' },
+    { num: 'F9', type: 'normal', color: '#4f0505' },
+    { num: 'F10', type: 'normal', color: '#fcb8a8' },
+    { num: 'F11', type: 'normal', color: '#f99578' },
+    { num: 'F12', type: 'normal', color: '#f57248' },
+    { num: 'F13', type: 'normal', color: '#ed4f22' },
+    { num: 'F14', type: 'normal', color: '#de350b' },
+    { num: 'F15', type: 'normal', color: '#c02a09' },
+    { num: 'F16', type: 'normal', color: '#9e2006' },
+    { num: 'F17', type: 'normal', color: '#7c1703' },
+    { num: 'F18', type: 'normal', color: '#5a0f02' },
+    { num: 'F19', type: 'normal', color: '#380801' },
+    { num: 'F20', type: 'normal', color: '#fad2cc' },
+    { num: 'F21', type: 'normal', color: '#f5b5a8' },
+    { num: 'F22', type: 'normal', color: '#ec9080' },
+    { num: 'F23', type: 'normal', color: '#e06a56' },
+    { num: 'F24', type: 'normal', color: '#d44b35' },
+    { num: 'F25', type: 'normal', color: '#be321f' },
+
+    // G系列 - 橙棕色 (21 colors)
+    { num: 'G1', type: 'normal', color: '#f7d89d' },
+    { num: 'G2', type: 'normal', color: '#f4c06e' },
+    { num: 'G3', type: 'normal', color: '#eca941' },
+    { num: 'G4', type: 'normal', color: '#e08c1e' },
+    { num: 'G5', type: 'normal', color: '#c46e10' },
+    { num: 'G6', type: 'normal', color: '#a6530a' },
+    { num: 'G7', type: 'normal', color: '#8a3f07' },
+    { num: 'G8', type: 'normal', color: '#6c2d04' },
+    { num: 'G9', type: 'normal', color: '#4e1c02' },
+    { num: 'G10', type: 'normal', color: '#e8c4a0' },
+    { num: 'G11', type: 'normal', color: '#d4a87a' },
+    { num: 'G12', type: 'normal', color: '#c08c5a' },
+    { num: 'G13', type: 'normal', color: '#ac7040' },
+    { num: 'G14', type: 'normal', color: '#985a2c' },
+    { num: 'G15', type: 'normal', color: '#7e461e' },
+    { num: 'G16', type: 'normal', color: '#643414' },
+    { num: 'G17', type: 'normal', color: '#4a240c' },
+    { num: 'G18', type: 'normal', color: '#301606' },
+    { num: 'G19', type: 'normal', color: '#1a0c04' },
+    { num: 'G20', type: 'normal', color: '#a86538' },
+    { num: 'G21', type: 'normal', color: '#8c4d28' },
+
+    // H系列 - 黑白灰 (23 colors)
+    { num: 'H1', type: 'normal', color: '#ffffff' },
+    { num: 'H2', type: 'normal', color: '#f5f5f5' },
+    { num: 'H3', type: 'normal', color: '#e8e8e8' },
+    { num: 'H4', type: 'normal', color: '#d1d1d1' },
+    { num: 'H5', type: 'normal', color: '#b5b5b5' },
+    { num: 'H6', type: 'normal', color: '#999999' },
+    { num: 'H7', type: 'normal', color: '#7d7d7d' },
+    { num: 'H8', type: 'normal', color: '#666666' },
+    { num: 'H9', type: 'normal', color: '#4d4d4d' },
+    { num: 'H10', type: 'normal', color: '#333333' },
+    { num: 'H11', type: 'normal', color: '#1a1a1a' },
+    { num: 'H12', type: 'normal', color: '#000000' },
+    { num: 'H13', type: 'normal', color: '#f0e6d3' },
+    { num: 'H14', type: 'normal', color: '#ddd0bc' },
+    { num: 'H15', type: 'normal', color: '#c9b9a4' },
+    { num: 'H16', type: 'normal', color: '#b5a38c' },
+    { num: 'H17', type: 'normal', color: '#9f8b74' },
+    { num: 'H18', type: 'normal', color: '#897560' },
+    { num: 'H19', type: 'normal', color: '#6e5b4c' },
+    { num: 'H20', type: 'normal', color: '#55443a' },
+    { num: 'H21', type: 'normal', color: '#3c2e28' },
+    { num: 'H22', type: 'normal', color: '#241b17' },
+    { num: 'H23', type: 'normal', color: '#0f0a08' },
+
+    // M系列 - 莫兰迪色 (15 colors)
+    { num: 'M1', type: 'normal', color: '#e8dcc8' },
+    { num: 'M2', type: 'normal', color: '#d4c4b0' },
+    { num: 'M3', type: 'normal', color: '#c2b09c' },
+    { num: 'M4', type: 'normal', color: '#a89f8c' },
+    { num: 'M5', type: 'normal', color: '#96897a' },
+    { num: 'M6', type: 'normal', color: '#7d7168' },
+    { num: 'M7', type: 'normal', color: '#655c54' },
+    { num: 'M8', type: 'normal', color: '#4e4640' },
+    { num: 'M9', type: 'normal', color: '#37312d' },
+    { num: 'M10', type: 'normal', color: '#221e1b' },
+    { num: 'M11', type: 'normal', color: '#c4b8a8' },
+    { num: 'M12', type: 'normal', color: '#a89888' },
+    { num: 'M13', type: 'normal', color: '#8c7868' },
+    { num: 'M14', type: 'normal', color: '#706058' },
+    { num: 'M15', type: 'normal', color: '#544848' },
+
+    // P系列 - 扩展色 (约20 colors)
+    { num: 'P1', type: 'normal', color: '#ffe4c4' },
+    { num: 'P2', type: 'normal', color: '#ffc8a8' },
+    { num: 'P3', type: 'normal', color: '#ffac8c' },
+    { num: 'P4', type: 'normal', color: '#ff906c' },
+    { num: 'P5', type: 'normal', color: '#ff784c' },
+    { num: 'P6', type: 'normal', color: '#ff5c28' },
+    { num: 'P7', type: 'normal', color: '#e84518' },
+    { num: 'P8', type: 'normal', color: '#c83208' },
+    { num: 'P9', type: 'normal', color: '#a82800' },
+    { num: 'P10', type: 'normal', color: '#8c2000' },
+    { num: 'P11', type: 'normal', color: '#f5d6e8' },
+    { num: 'P12', type: 'normal', color: '#e8b8d0' },
+    { num: 'P13', type: 'normal', color: '#d898b8' },
+    { num: 'P14', type: 'normal', color: '#c878a0' },
+    { num: 'P15', type: 'normal', color: '#b85888' },
+    { num: 'P16', type: 'normal', color: '#a04070' },
+    { num: 'P17', type: 'normal', color: '#882858' },
+    { num: 'P18', type: 'normal', color: '#701040' },
+    { num: 'P19', type: 'normal', color: '#580028' },
+    { num: 'P20', type: 'normal', color: '#400010' },
+
+    // Q系列 - 扩展色 (约15 colors)
+    { num: 'Q1', type: 'normal', color: '#d4f5d4' },
+    { num: 'Q2', type: 'normal', color: '#a8e8a8' },
+    { num: 'Q3', type: 'normal', color: '#78dc78' },
+    { num: 'Q4', type: 'normal', color: '#48c848' },
+    { num: 'Q5', type: 'normal', color: '#20b820' },
+    { num: 'Q6', type: 'normal', color: '#00a000' },
+    { num: 'Q7', type: 'normal', color: '#008800' },
+    { num: 'Q8', type: 'normal', color: '#007000' },
+    { num: 'Q9', type: 'normal', color: '#005800' },
+    { num: 'Q10', type: 'normal', color: '#004000' },
+    { num: 'Q11', type: 'normal', color: '#e8f5e8' },
+    { num: 'Q12', type: 'normal', color: '#c8e8c8' },
+    { num: 'Q13', type: 'normal', color: '#a8dca8' },
+    { num: 'Q14', type: 'normal', color: '#88d088' },
+    { num: 'Q15', type: 'normal', color: '#68c068' },
+
+    // R系列 - 扩展色 (约15 colors)
+    { num: 'R1', type: 'normal', color: '#d0e8f5' },
+    { num: 'R2', type: 'normal', color: '#a8d8ec' },
+    { num: 'R3', type: 'normal', color: '#78c8e4' },
+    { num: 'R4', type: 'normal', color: '#48b8dc' },
+    { num: 'R5', type: 'normal', color: '#20a8d4' },
+    { num: 'R6', type: 'normal', color: '#0090bc' },
+    { num: 'R7', type: 'normal', color: '#0078a0' },
+    { num: 'R8', type: 'normal', color: '#006288' },
+    { num: 'R9', type: 'normal', color: '#004c70' },
+    { num: 'R10', type: 'normal', color: '#003858' },
+    { num: 'R11', type: 'normal', color: '#d0e0f8' },
+    { num: 'R12', type: 'normal', color: '#a8c8f0' },
+    { num: 'R13', type: 'normal', color: '#78b0e8' },
+    { num: 'R14', type: 'normal', color: '#4898e0' },
+    { num: 'R15', type: 'normal', color: '#2080d8' },
+
+    // T系列 - 扩展色 (约10 colors)
+    { num: 'T1', type: 'normal', color: '#f8e8d8' },
+    { num: 'T2', type: 'normal', color: '#f0d0b8' },
+    { num: 'T3', type: 'normal', color: '#e8b898' },
+    { num: 'T4', type: 'normal', color: '#e0a078' },
+    { num: 'T5', type: 'normal', color: '#d88858' },
+    { num: 'T6', type: 'normal', color: '#d07040' },
+    { num: 'T7', type: 'normal', color: '#c05828' },
+    { num: 'T8', type: 'normal', color: '#a84010' },
+    { num: 'T9', type: 'normal', color: '#902c00' },
+    { num: 'T10', type: 'normal', color: '#781800' },
+
+    // Y系列 - 扩展色 (约8 colors)
+    { num: 'Y1', type: 'normal', color: '#f8f0e0' },
+    { num: 'Y2', type: 'normal', color: '#f0e0c8' },
+    { num: 'Y3', type: 'normal', color: '#e8d0b0' },
+    { num: 'Y4', type: 'normal', color: '#e0c098' },
+    { num: 'Y5', type: 'normal', color: '#d8b080' },
+    { num: 'Y6', type: 'normal', color: '#d0a068' },
+    { num: 'Y7', type: 'normal', color: '#c89050' },
+    { num: 'Y8', type: 'normal', color: '#c08038' },
+
+    // Z系列 - 扩展色 (约8 colors)
+    { num: 'Z1', type: 'normal', color: '#e0e8e0' },
+    { num: 'Z2', type: 'normal', color: '#c8d8c8' },
+    { num: 'Z3', type: 'normal', color: '#b0c8b0' },
+    { num: 'Z4', type: 'normal', color: '#98b898' },
+    { num: 'Z5', type: 'normal', color: '#80a880' },
+    { num: 'Z6', type: 'normal', color: '#689868' },
+    { num: 'Z7', type: 'normal', color: '#508850' },
+    { num: 'Z8', type: 'normal', color: '#387838' }
+];
 
 // 工具定义
 const TOOLS = {
@@ -415,10 +786,71 @@ function initEventListeners() {
     });
 }
 
+// ============================================
+// 颜色盘渲染
+// ============================================
+
+function renderColorPanel() {
+    const colorList = document.getElementById('colorList');
+    if (!colorList) return;
+    colorList.innerHTML = '';
+
+    // 按系列分组
+    const seriesMap = {};
+    MARD_COLORS.forEach(c => {
+        const series = c.num.match(/^[A-Z]/)?.[0] || 'Other';
+        if (!seriesMap[series]) seriesMap[series] = [];
+        seriesMap[series].push(c);
+    });
+
+    // 渲染每个系列
+    Object.keys(seriesMap).sort().forEach(series => {
+        const seriesDiv = document.createElement('div');
+        seriesDiv.className = 'color-series';
+        seriesDiv.innerHTML = `<h4>${series}系列</h4>`;
+
+        const colorsDiv = document.createElement('div');
+        colorsDiv.className = 'color-grid';
+        colorsDiv.style.display = 'grid';
+        colorsDiv.style.gridTemplateColumns = 'repeat(6, 1fr)';
+        colorsDiv.style.gap = '4px';
+
+        seriesMap[series].forEach(c => {
+            const colorBtn = document.createElement('button');
+            colorBtn.className = 'color-btn';
+            colorBtn.style.backgroundColor = c.color;
+            colorBtn.style.width = '28px';
+            colorBtn.style.height = '28px';
+            colorBtn.style.border = '2px solid transparent';
+            colorBtn.style.borderRadius = '4px';
+            colorBtn.style.cursor = 'pointer';
+            colorBtn.title = `${c.num} - ${c.type}`;
+
+            if (c.type !== 'normal') {
+                colorBtn.style.boxShadow = '0 0 4px ' + c.color;
+            }
+
+            colorBtn.addEventListener('click', () => {
+                state.currentColor = c.color;
+                document.querySelectorAll('.color-btn').forEach(b => {
+                    b.style.border = '2px solid transparent';
+                });
+                colorBtn.style.border = '2px solid white';
+            });
+
+            colorsDiv.appendChild(colorBtn);
+        });
+
+        seriesDiv.appendChild(colorsDiv);
+        colorList.appendChild(seriesDiv);
+    });
+}
+
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', () => {
     initCanvas();
     initEventListeners();
+    renderColorPanel();
 });
 </script>
 </html>
