@@ -1,8 +1,9 @@
 <!--
 /**
  * PinDou - 拼豆图案设计工具
- * 版本：v1.1.1
+ * 版本：v1.1.2
  * 更新日志：
+ *   2026-05-02 v1.1.2 - 优化：导出PNG像素增大至30px/格；色号字体加黑加粗描边；每10格添加深色辅助线
  *   2026-05-02 v1.1.1 - 新增：清除画布和清除缓存功能
  *   2026-05-02 v1.1.0 - 新增：图片尺寸支持自定义输入（长×宽）；空白/背景自动填充白色；优化颜色匹配算法（LAB色彩空间）
  *   2026-05-02 v1.0.9 - 新增：铅笔/橡皮擦工具切换；画布平移功能；导出PNG增加序号/色号标注
@@ -941,9 +942,9 @@ function updateStatusBar() {
 // ============================================
 
 function exportAsPNG() {
-    const CELL_SIZE = 20;    // 每个格子导出时的像素大小
-    const LABEL_WIDTH = 30;  // 序号标签宽度
-    const FONT_SIZE = 10;     // 序号字体大小
+    const CELL_SIZE = 30;     // 每个格子导出时的像素大小（增大到30px）
+    const LABEL_WIDTH = 40;   // 序号标签宽度
+    const GRID_GAP = 10;      // 辅助线间隔（每10格一道）
 
     // 计算画布尺寸（包含序号区域）
     const patternWidth = state.canvasWidth * CELL_SIZE;
@@ -962,12 +963,12 @@ function exportAsPNG() {
     exportCtx.fillRect(0, 0, totalWidth, totalHeight);
 
     // 绘制序号背景
-    exportCtx.fillStyle = '#f5f5f5';
+    exportCtx.fillStyle = '#f0f0f0';
     exportCtx.fillRect(0, 0, LABEL_WIDTH, LABEL_WIDTH);
 
-    // 绘制列序号（上方）
-    exportCtx.fillStyle = '#333333';
-    exportCtx.font = `${FONT_SIZE}px monospace`;
+    // 绘制列序号（上方）- 加粗
+    exportCtx.fillStyle = '#000000';
+    exportCtx.font = 'bold 11px monospace';
     exportCtx.textAlign = 'center';
     exportCtx.textBaseline = 'middle';
     for (let x = 0; x < state.canvasWidth; x++) {
@@ -976,9 +977,8 @@ function exportAsPNG() {
         exportCtx.fillText((x + 1).toString(), cx, cy);
     }
 
-    // 绘制行序号（左侧）
+    // 绘制行序号（左侧）- 加粗
     exportCtx.textAlign = 'center';
-    exportCtx.textBaseline = 'middle';
     for (let y = 0; y < state.canvasHeight; y++) {
         const cx = LABEL_WIDTH / 2;
         const cy = LABEL_WIDTH + y * CELL_SIZE + CELL_SIZE / 2;
@@ -997,34 +997,63 @@ function exportAsPNG() {
                 exportCtx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
             }
 
-            // 绘制格子边框
-            exportCtx.strokeStyle = '#cccccc';
+            // 绘制格子边框（浅灰）
+            exportCtx.strokeStyle = '#dddddd';
             exportCtx.lineWidth = 0.5;
             exportCtx.strokeRect(px, py, CELL_SIZE, CELL_SIZE);
 
-            // 在格子中心显示色号（如果格子足够大）
+            // 在格子中心显示色号 - 加黑加粗
             if (CELL_SIZE >= 15) {
-                exportCtx.fillStyle = '#333333';
-                exportCtx.font = `${Math.max(7, CELL_SIZE / 4)}px monospace`;
                 exportCtx.textAlign = 'center';
                 exportCtx.textBaseline = 'middle';
 
                 // 找到对应的色号
                 const colorNum = findColorNumber(color);
                 if (colorNum) {
-                    // 根据背景颜色决定文字颜色
+                    // 根据背景颜色决定文字颜色（保证对比度）
                     const rgb = hexToRgb(color);
                     const brightness = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
-                    exportCtx.fillStyle = brightness > 128 ? '#333333' : '#ffffff';
+                    const textColor = brightness > 128 ? '#000000' : '#ffffff';
+
+                    // 绘制文字描边（加粗效果）
+                    exportCtx.strokeStyle = brightness > 128 ? '#ffffff' : '#000000';
+                    exportCtx.lineWidth = 2;
+                    exportCtx.font = 'bold 9px monospace';
+                    exportCtx.strokeText(colorNum, px + CELL_SIZE / 2, py + CELL_SIZE / 2);
+
+                    // 绘制文字
+                    exportCtx.fillStyle = textColor;
                     exportCtx.fillText(colorNum, px + CELL_SIZE / 2, py + CELL_SIZE / 2);
                 }
             }
         }
     }
 
-    // 绘制分隔线
-    exportCtx.strokeStyle = '#999999';
-    exportCtx.lineWidth = 1;
+    // 绘制辅助线（每10格一道，深色醒目线条）
+    exportCtx.strokeStyle = '#333333';
+    exportCtx.lineWidth = 1.5;
+
+    // 垂直辅助线
+    for (let x = 10; x < state.canvasWidth; x += GRID_GAP) {
+        const px = LABEL_WIDTH + x * CELL_SIZE;
+        exportCtx.beginPath();
+        exportCtx.moveTo(px, LABEL_WIDTH);
+        exportCtx.lineTo(px, totalHeight);
+        exportCtx.stroke();
+    }
+
+    // 水平辅助线
+    for (let y = 10; y < state.canvasHeight; y += GRID_GAP) {
+        const py = LABEL_WIDTH + y * CELL_SIZE;
+        exportCtx.beginPath();
+        exportCtx.moveTo(LABEL_WIDTH, py);
+        exportCtx.lineTo(totalWidth, py);
+        exportCtx.stroke();
+    }
+
+    // 绘制分隔线（序号区域边框）
+    exportCtx.strokeStyle = '#666666';
+    exportCtx.lineWidth = 1.5;
     exportCtx.beginPath();
     exportCtx.moveTo(LABEL_WIDTH, 0);
     exportCtx.lineTo(LABEL_WIDTH, totalHeight);
@@ -1032,7 +1061,7 @@ function exportAsPNG() {
     exportCtx.lineTo(totalWidth, LABEL_WIDTH);
     exportCtx.stroke();
 
-    // 转换为 Blob 并下载
+    // 转换为 Blob 并下载（高质量 PNG）
     exportCanvas.toBlob((blob) => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
