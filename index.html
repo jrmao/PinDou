@@ -1,8 +1,9 @@
 <!--
 /**
  * PinDou - 拼豆图案设计工具
- * 版本：v1.0.5
+ * 版本：v1.0.6
  * 更新日志：
+ *   2026-05-03 v1.0.6 - 模板库功能
  *   2026-05-03 v1.0.5 - 图片转图案功能
  *   2026-05-03 v1.0.4 - Mard 颜色盘
  *   2026-05-03 v1.0.3 - 画布操作核心逻辑
@@ -189,6 +190,13 @@
                     </div>
                     <button id="btnConvert" style="padding:8px 24px; background:#e94560; color:white; border:none; border-radius:6px; cursor:pointer;">转换</button>
                     <button id="btnCancelConvert" style="padding:8px 24px; margin-left:8px; background:#444; color:white; border:none; border-radius:6px; cursor:pointer;">取消</button>
+                </div>
+
+                <!-- 模板库面板（初始隐藏） -->
+                <div id="templatePanel" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#16213e; padding:24px; border-radius:12px; z-index:100; max-width:500px;">
+                    <h3>图案模板库</h3>
+                    <div id="templateList" style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:16px 0; max-height:400px; overflow-y:auto;"></div>
+                    <button id="btnCloseTemplates" style="padding:8px 24px; background:#444; color:white; border:none; border-radius:6px; cursor:pointer;">关闭</button>
                 </div>
             </div>
         </div>
@@ -540,6 +548,66 @@ const MARD_COLORS = [
     { num: 'Z8', type: 'normal', color: '#387838' }
 ];
 
+// ============================================
+// 内置模板
+// ============================================
+
+const BUILT_IN_TEMPLATES = [
+    {
+        name: '爱心',
+        width: 11,
+        height: 11,
+        data: [
+            null,null,'#FF6B6B','#FF6B6B',null,null,null,'#FF6B6B','#FF6B6B',null,null,
+            null,'#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',null,
+            '#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',
+            '#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',
+            '#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',
+            '#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',
+            '#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',
+            null,'#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',null,
+            null,null,'#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',null,null,
+            null,null,null,'#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B','#FF6B6B',null,null,null,
+            null,null,null,null,'#FF6B6B','#FF6B6B','#FF6B6B',null,null,null,null,
+        ]
+    },
+    {
+        name: '星星',
+        width: 11,
+        height: 11,
+        data: [
+            null,null,null,null,'#FFD700','#FFD700',null,null,null,null,null,
+            null,null,null,'#FFD700','#FFD700','#FFD700','#FFD700',null,null,null,null,
+            null,null,null,'#FFD700','#FFD700','#FFD700','#FFD700',null,null,null,null,
+            '#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700',
+            '#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700',
+            null,'#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700',null,
+            null,null,'#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700','#FFD700',null,null,
+            null,null,'#FFD700','#FFD700','#FFD700',null,null,'#FFD700','#FFD700',null,null,
+            null,'#FFD700','#FFD700','#FFD700',null,null,null,null,'#FFD700','#FFD700',null,
+            '#FFD700','#FFD700',null,null,null,null,null,null,null,null,'#FFD700','#FFD700',
+        ]
+    },
+    {
+        name: '笑脸',
+        width: 11,
+        height: 11,
+        data: [
+            null,null,'#FFE135','#FFE135',null,null,null,null,'#FFE135','#FFE135',null,
+            null,'#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135',null,
+            '#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135',
+            '#FFE135','#FFE135','#000000','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#000000','#FFE135','#FFE135',
+            '#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135',
+            '#FFE135','#FFE135','#FFE135','#000000','#FFE135','#FFE135','#FFE135','#000000','#FFE135','#FFE135','#FFE135',
+            '#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135',
+            null,'#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135',null,
+            null,null,'#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135','#FFE135',null,null,
+            null,null,null,null,null,null,null,null,null,null,null,
+            null,null,null,null,null,null,null,null,null,null,null,
+        ]
+    }
+];
+
 // 工具定义
 const TOOLS = {
     PENCIL: 'pencil',
@@ -806,6 +874,58 @@ function hideImageConvertPanel() {
     document.getElementById('previewImg').src = '';
 }
 
+// ============================================
+// 模板库
+// ============================================
+
+function showTemplatePanel() {
+    const templateList = document.getElementById('templateList');
+    if (!templateList) return;
+    templateList.innerHTML = '';
+
+    BUILT_IN_TEMPLATES.forEach((template, index) => {
+        const templateCard = document.createElement('div');
+        templateCard.style.cssText = 'background:#0f3460; padding:12px; border-radius:8px; cursor:pointer; text-align:center;';
+        templateCard.innerHTML = `
+            <div style="width:60px; height:60px; margin:0 auto 8px; display:flex; align-items:center; justify-content:center; font-size:24px;">
+                ${template.name[0]}
+            </div>
+            <div style="font-size:12px;">${template.name}</div>
+        `;
+        templateCard.addEventListener('click', () => loadTemplate(index));
+        templateList.appendChild(templateCard);
+    });
+
+    document.getElementById('templatePanel').style.display = 'block';
+}
+
+function hideTemplatePanel() {
+    document.getElementById('templatePanel').style.display = 'none';
+}
+
+function loadTemplate(index) {
+    const template = BUILT_IN_TEMPLATES[index];
+    if (!template) return;
+
+    state.canvasWidth = template.width;
+    state.canvasHeight = template.height;
+    canvas.width = template.width * PIXEL_SIZE;
+    canvas.height = template.height * PIXEL_SIZE;
+
+    state.gridData = [];
+    for (let y = 0; y < template.height; y++) {
+        const row = [];
+        for (let x = 0; x < template.width; x++) {
+            row.push(template.data[y * template.width + x]);
+        }
+        state.gridData.push(row);
+    }
+
+    renderCanvas();
+    saveToHistory();
+    hideTemplatePanel();
+}
+
 function handleImageUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -905,6 +1025,10 @@ function initEventListeners() {
     document.getElementById('imageInput').addEventListener('change', handleImageUpload);
     document.getElementById('btnConvert').addEventListener('click', convertImageToPattern);
     document.getElementById('btnCancelConvert').addEventListener('click', hideImageConvertPanel);
+
+    // 模板库事件
+    document.getElementById('btnTemplates').addEventListener('click', showTemplatePanel);
+    document.getElementById('btnCloseTemplates').addEventListener('click', hideTemplatePanel);
 
     // 键盘快捷键
     document.addEventListener('keydown', (e) => {
