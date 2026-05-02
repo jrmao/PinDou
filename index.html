@@ -771,13 +771,11 @@ function initCanvas() {
 }
 
 function updateCanvasTransform() {
-    const container = document.getElementById('canvasContainer');
     const scale = state.zoom;
     const tx = state.panX;
     const ty = state.panY;
-    container.style.perspective = '1000px';
     canvas.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
-    canvas.style.transformOrigin = 'center center';
+    canvas.style.transformOrigin = '0 0';
 }
 
 function renderCanvas() {
@@ -833,8 +831,9 @@ function handleCanvasMouseDown(e) {
 
     state.isDrawing = true;
     const rect = canvas.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left - state.panX) / PIXEL_SIZE);
-    const y = Math.floor((e.clientY - rect.top - state.panY) / PIXEL_SIZE);
+    // getBoundingClientRect 已经考虑了 transform，直接计算相对于画布的位置
+    const x = Math.floor((e.clientX - rect.left) / (PIXEL_SIZE * state.zoom));
+    const y = Math.floor((e.clientY - rect.top) / (PIXEL_SIZE * state.zoom));
     state.startX = x;
     state.startY = y;
 
@@ -850,15 +849,15 @@ function handleCanvasMouseMove(e) {
     if (state.isPanning) {
         state.panX = e.clientX - state.panStartX;
         state.panY = e.clientY - state.panStartY;
-        renderCanvas();
+        updateCanvasTransform();
         return;
     }
 
     if (!state.isDrawing) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left - state.panX) / PIXEL_SIZE);
-    const y = Math.floor((e.clientY - rect.top - state.panY) / PIXEL_SIZE);
+    const x = Math.floor((e.clientX - rect.left) / (PIXEL_SIZE * state.zoom));
+    const y = Math.floor((e.clientY - rect.top) / (PIXEL_SIZE * state.zoom));
 
     if (state.currentTool === TOOLS.PENCIL) {
         setPixel(x, y, state.currentColor);
@@ -875,8 +874,8 @@ function handleCanvasMouseUp(e) {
     if (state.isDrawing && state.currentTool !== TOOLS.PENCIL && state.currentTool !== TOOLS.ERASER && state.currentTool !== TOOLS.FILL) {
         // 矩形和直线工具
         const rect = canvas.getBoundingClientRect();
-        const x = Math.floor((e.clientX - rect.left - state.panX) / PIXEL_SIZE);
-        const y = Math.floor((e.clientY - rect.top - state.panY) / PIXEL_SIZE);
+        const x = Math.floor((e.clientX - rect.left) / (PIXEL_SIZE * state.zoom));
+        const y = Math.floor((e.clientY - rect.top) / (PIXEL_SIZE * state.zoom));
         drawShape(state.startX, state.startY, x, y, state.currentColor);
     }
     state.isDrawing = false;
