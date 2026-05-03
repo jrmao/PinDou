@@ -1519,13 +1519,11 @@ function reapplyFullConversionOnCanvas() {
         }
     }
 
-    // 保护：限制 edgeSharpness 防止背景被侵蚀
-    const safeEdgeSharpness = Math.min(edgeSharpness, 6);
+    // 保护：限制 edgeSharpness 取消，允许完整 0-10 范围生效
+    // const safeEdgeSharpness = Math.min(edgeSharpness, 6);
 
-    // 应用色块增强（仅小尺寸图像）
-    if (width <= 100 || height <= 100) {
-        enhanceColorBlocks(denoiseLevel, safeEdgeSharpness);
-    }
+    // 应用色块增强（适用于所有尺寸图像）
+    enhanceColorBlocks(denoiseLevel, edgeSharpness);
 
     // 统计变化像素数量
     let bgChanged = 0, denoiseChanged = 0, edgeChanged = 0;
@@ -1552,12 +1550,12 @@ function reapplyFullConversionOnCanvas() {
     state._lastEdgeSharpness = edgeSharpness;
 
     // 显示变化统计
-    console.log(`[预览] 背景敏感度变化: ${bgSensitivity} | 去噪变化: ${denoiseLevel} | 边缘锐度变化: ${safeEdgeSharpness}`);
+    console.log(`[预览] 背景敏感度变化: ${bgSensitivity} | 去噪变化: ${denoiseLevel} | 边缘锐度变化: ${edgeSharpness}`);
 
     renderCanvas();
 }
 
-// 色块融合和边界增强算法（针对小尺寸图像）
+// 色块融合和边界增强算法
 /**
  * 色块增强处理
  * @param {number} denoiseLevel - 去噪强度 (0-10)
@@ -1568,21 +1566,32 @@ function enhanceColorBlocks(denoiseLevel = 3, edgeSharpness = 5) {
     const height = state.canvasHeight;
 
     // 根据去噪强度计算小区域阈值
-    // denoiseLevel 0-10: minRegionSize 从 2 到 8
-    const minRegionSize = Math.max(2, Math.floor(denoiseLevel * 0.6));
+    // denoiseLevel 0-10: minRegionSize 从 3 到 30（更激进的合并范围）
+    const minRegionSize = Math.max(3, Math.floor(denoiseLevel * 3));
 
-    // 颜色差异阈值
-    const threshold = 15;
+    // 根据去噪强度和边缘锐度计算合并阈值
+    // 去噪强度越高，小区域越容易被合并（阈值越大）
+    // 边缘锐度越高，边界处理越严格（阈值越小）
+    const mergeThreshold = Math.floor(15 + denoiseLevel * 3 - edgeSharpness * 2);
 
     const tempGrid = state.gridData.map(row => [...row]);
     const visited = Array.from({ length: height }, () => Array(width).fill(false));
 
     const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
 
+    function hexToRgbSimple(hex) {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+        } : { r: 0, g: 0, b: 0 };
+    }
+
     function colorDistance(c1, c2) {
         if (!c1 || !c2) return Infinity;
-        const rgb1 = hexToRgb(c1);
-        const rgb2 = hexToRgb(c2);
+        const rgb1 = hexToRgbSimple(c1);
+        const rgb2 = hexToRgbSimple(c2);
         return Math.sqrt(
             Math.pow(rgb1.r - rgb2.r, 2) +
             Math.pow(rgb1.g - rgb2.g, 2) +
@@ -1611,11 +1620,7 @@ function enhanceColorBlocks(denoiseLevel = 3, edgeSharpness = 5) {
         return region;
     }
 
-    // 根据边缘锐度计算边缘区域边距
-    // edgeSharpness 0-10: margin 从 1 到 5 (高锐度=大边距=捕获更多边缘像素)
-    const margin = Math.max(1, Math.floor(edgeSharpness * 0.4) + 1);
-
-    // 遍历所有格子进行区域生长
+    // 第一遍：去噪 - 合并小区域
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             if (visited[y][x]) continue;
@@ -1623,9 +1628,7 @@ function enhanceColorBlocks(denoiseLevel = 3, edgeSharpness = 5) {
             const currentColor = tempGrid[y][x];
             const region = floodFillMerge(x, y, currentColor);
 
-            // 使用参数化的小区域阈值
             if (region.length <= minRegionSize) {
-                // 找到周围的主要颜色
                 const neighborColors = {};
                 for (const [rx, ry] of region) {
                     for (const [dx, dy] of directions) {
@@ -1648,12 +1651,65 @@ function enhanceColorBlocks(denoiseLevel = 3, edgeSharpness = 5) {
                     }
                 }
 
-                // 只有在边缘区域且差异不大时才合并
+                // 使用动态阈值的合并条件
                 if (mainColor &&
-                    colorDistance(currentColor, mainColor) < threshold * 2 &&
-                    isEdgeRegion(region[0][0], region[0][1], width, height, margin)) {
+                    colorDistance(currentColor, mainColor) < mergeThreshold) {
                     for (const [rx, ry] of region) {
                         state.gridData[ry][rx] = mainColor;
+                    }
+                }
+            }
+        }
+    }
+
+    // 第二遍：边缘锐化 - 强化边界对比度
+    // edgeSharpness 0-5: 模糊边界（推向主颜色）
+    // edgeSharpness 6-10: 锐化边界（保持或推向对比色）
+    if (edgeSharpness > 0) {
+        const sharpGrid = state.gridData.map(row => [...row]);
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const currentColor = sharpGrid[y][x];
+                const neighbors = [];
+
+                // 收集所有邻居
+                for (const [dx, dy] of directions) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                        neighbors.push(sharpGrid[ny][nx]);
+                    }
+                }
+
+                // 统计邻居中的主要颜色
+                const colorCount = {};
+                for (const nc of neighbors) {
+                    colorCount[nc] = (colorCount[nc] || 0) + 1;
+                }
+
+                // 找到邻居中的主颜色和数量
+                let mainColor = null, mainCount = 0;
+                for (const [color, count] of Object.entries(colorCount)) {
+                    if (count > mainCount) {
+                        mainCount = count;
+                        mainColor = color;
+                    }
+                }
+
+                // 判断是否为边界像素（邻居有不同颜色）
+                const isBoundary = mainColor !== null && mainColor !== currentColor;
+
+                if (isBoundary) {
+                    // 边缘锐度 0-5: 推向主颜色（模糊边界）
+                    // 边缘锐度 6-10: 推向非主颜色（强化对比）
+                    if (edgeSharpness <= 5) {
+                        // 推向主颜色，模糊边界
+                        if (mainCount >= 3) {
+                            state.gridData[y][x] = mainColor;
+                        }
+                    } else {
+                        // 锐化：边界像素保持不动，让边界更清晰
+                        // 不做任何改变，让边界两侧颜色自然对比
                     }
                 }
             }
@@ -1686,18 +1742,14 @@ function isBackgroundColor(r, g, b, a, x, y, width, height, sensitivity = 5, edg
     const brightness = (r + g + b) / 3;
     const saturation = Math.max(r, g, b) - Math.min(r, g, b);
 
-    // 根据敏感度计算阈值
-    // sensitivity 0-10: 亮度阈值从 250 降到 235, 饱和度阈值从 25降到 10
-    const brightnessThreshold = 250 - (sensitivity * 1.5);
-    const saturationThreshold = 25 - (sensitivity * 1.5);
+    // 根据敏感度计算阈值（更激进的背景消除范围）
+    // sensitivity 0-10: 亮度阈值从 255 降到 180, 饱和度阈值从 30 降到 5
+    const brightnessThreshold = 255 - (sensitivity * 7.5);
+    const saturationThreshold = 30 - (sensitivity * 2.5);
 
-    // 非常亮的单色区域
+    // 亮的单色区域 - 判定为背景（不再限制为仅边缘区域）
     if (brightness > brightnessThreshold && saturation < saturationThreshold) {
-        // 只有在边缘区域才判定为背景，使用 edgeSharpness 计算边距
-        const margin = Math.max(1, Math.floor(edgeSharpness * 0.4) + 1);
-        if (isEdgeRegion(x, y, width, height, margin)) {
-            return true;
-        }
+        return true;
     }
 
     return false;
